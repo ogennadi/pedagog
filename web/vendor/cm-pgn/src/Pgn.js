@@ -1,0 +1,98 @@
+/**
+ * Author and copyright: Stefan Haack (https://shaack.com)
+ * Repository: https://github.com/shaack/cm-pgn
+ * License: MIT, see file 'LICENSE'
+ */
+import {Header, TAGS} from "./Header.js"
+import {History} from "./History.js"
+
+export class Pgn {
+
+    constructor(pgnString = "", props = {}) {
+        // only the header?
+        const lastHeaderElement = pgnString.trim().slice(-1) === "]" ? pgnString.length : pgnString.lastIndexOf("]\n\n") + 1
+        const headerString = pgnString.substring(0, lastHeaderElement)
+        const historyString = pgnString.substring(lastHeaderElement)
+        this.props = {
+            sloppy: false,
+            chess960: false,
+            ...props
+        }
+        this.header = new Header(headerString)
+        const variant = this.header.tags[TAGS.Variant]
+        if (variant &&
+            (variant.toLowerCase() === "chess960" ||
+                variant.toLowerCase() === "freestyle" ||
+                variant.toLowerCase() === "fischerandom")) {
+            this.props.chess960 = true
+        }
+        if (this.header.tags[TAGS.SetUp] === "1" && this.header.tags[TAGS.FEN]) {
+            this.history = new History(historyString, {
+                setUpFen: this.header.tags[TAGS.FEN],
+                sloppy: this.props.sloppy,
+                chess960: this.props.chess960
+            })
+        } else {
+            this.history = new History(historyString, {sloppy: this.props.sloppy, chess960: this.props.chess960})
+        }
+        // comments before the first move, chessops-style (game.comments)
+        this.gameComment = this.history.gameComment
+    }
+
+    wrap(str, maxLength) {
+        // Tokenize such that {...} comments stay atomic; wrap must never
+        // insert a line break inside a comment, otherwise round-tripping
+        // a comment that already contains whitespace becomes unstable.
+        const tokens = []
+        let i = 0
+        while (i < str.length) {
+            const ch = str[i]
+            if (ch === " " || ch === "\n" || ch === "\t") {
+                i++
+                continue
+            }
+            if (ch === "{") {
+                const end = str.indexOf("}", i)
+                if (end === -1) {
+                    tokens.push(str.substring(i))
+                    break
+                }
+                tokens.push(str.substring(i, end + 1))
+                i = end + 1
+            } else {
+                let j = i
+                while (j < str.length && str[j] !== " " && str[j] !== "\n" && str[j] !== "\t" && str[j] !== "{") {
+                    j++
+                }
+                tokens.push(str.substring(i, j))
+                i = j
+            }
+        }
+        const lines = []
+        let line = ""
+        for (const tok of tokens) {
+            if (line.length === 0) {
+                line = tok
+            } else if (line.length + 1 + tok.length <= maxLength) {
+                line += " " + tok
+            } else {
+                lines.push(line)
+                line = tok
+            }
+        }
+        if (line.length > 0) {
+            lines.push(line)
+        }
+        return lines.join("\n")
+    }
+
+    render(renderHeader = true, renderComments = true, renderNags = true) {
+        const header = renderHeader ? (this.header.render() + "\n") : ""
+        let history = this.history.render(renderComments, renderNags)
+        if (this.header.tags[TAGS.Result]) {
+            history += " " + this.header.tags[TAGS.Result]
+        }
+        return header + this.wrap(history, 80)
+    }
+
+}

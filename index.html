@@ -1,28 +1,119 @@
 <!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<title>Pedagog — UCI in the browser</title>
-<style>
-  body { font: 14px/1.4 ui-monospace, monospace; max-width: 60em; margin: 2em auto; }
-  pre { background: #f4f4f4; padding: 1em; height: 24em; overflow: auto; white-space: pre-wrap; }
-  input { width: 100%; font: inherit; padding: .4em; box-sizing: border-box; }
-</style>
-<h1>Pedagog</h1>
-<p>The engine runs in a Web Worker. Type UCI commands, e.g. <code>uci</code>, <code>position startpos</code>, <code>go depth 8</code>, <code>stop</code>.</p>
-<pre id="log"></pre>
-<input id="cmd" placeholder="UCI command, then Enter" autofocus>
-<script>
-  const log = document.getElementById("log"), input = document.getElementById("cmd");
-  const worker = new Worker("pedagog.js");
-  // With cross-origin isolation (COOP/COEP headers) a shared flag lets "stop"
-  // interrupt a running search; without it, "stop" waits for the search to end.
-  const stopFlag = typeof SharedArrayBuffer !== "undefined" ? new Int32Array(new SharedArrayBuffer(4)) : null;
-  if (stopFlag) worker.postMessage({ stopFlag });
-  worker.onmessage = (e) => { log.textContent += e.data + "\n"; log.scrollTop = log.scrollHeight; };
-  function send(line) {
-    log.textContent += "> " + line + "\n";
-    if (line.trim() === "stop" && stopFlag) Atomics.store(stopFlag, 0, 1);
-    else { if (line.trim().startsWith("go") && stopFlag) Atomics.store(stopFlag, 0, 0); worker.postMessage(line); }
-  }
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { send(input.value); input.value = ""; } });
-  send("uci");
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2b2b2b">
+<title>Pedagog — play the engine</title>
+<link rel="manifest" href="web/manifest.json">
+<link rel="stylesheet" href="web/vendor/chessground/chessground.base.css">
+<link rel="stylesheet" href="web/vendor/chessground/chessground.brown.css">
+<link rel="stylesheet" href="web/vendor/chessground/chessground.cburnett.css">
+<link rel="stylesheet" href="web/app.css">
+<script type="importmap">
+{ "imports": {
+  "chessground": "./web/vendor/chessground/chessground.min.js",
+  "cm-chess/": "./web/vendor/cm-chess/",
+  "cm-pgn/": "./web/vendor/cm-pgn/",
+  "chess.mjs/": "./web/vendor/chess.mjs/"
+} }
 </script>
+</head>
+<body>
+<header>
+  <h1>Pedagog</h1>
+  <span id="status" class="status">loading engine…</span>
+</header>
+
+<main>
+  <section class="board-column">
+    <div class="player-bar" id="bar-top">
+      <span class="name" id="name-top">—</span>
+      <span class="captured cg-wrap" id="captured-top"></span>
+      <span class="clock" id="clock-top">0:00</span>
+    </div>
+    <div id="board" class="board"></div>
+    <div class="player-bar" id="bar-bottom">
+      <span class="name" id="name-bottom">—</span>
+      <span class="captured cg-wrap" id="captured-bottom"></span>
+      <span class="clock" id="clock-bottom">0:00</span>
+    </div>
+    <div id="promotion" class="promotion hidden">
+      <button data-piece="q"><piece class="queen"></piece></button>
+      <button data-piece="r"><piece class="rook"></piece></button>
+      <button data-piece="b"><piece class="bishop"></piece></button>
+      <button data-piece="n"><piece class="knight"></piece></button>
+    </div>
+  </section>
+
+  <section class="side-column">
+    <form id="setup" class="setup" onsubmit="return false">
+      <div class="row">
+        <label>Mode
+          <select id="mode">
+            <option value="hvb">Human vs Bot</option>
+            <option value="bvb">Bot vs Bot</option>
+          </select>
+        </label>
+        <label id="colour-row">You play
+          <select id="colour">
+            <option value="white">White</option>
+            <option value="black">Black</option>
+            <option value="random">Random</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
+        <label id="level-row">Bot level <output id="level-out">10</output>
+          <input type="range" id="level" min="1" max="10" value="5">
+        </label>
+        <label id="level2-row" class="hidden">Black bot level <output id="level2-out">10</output>
+          <input type="range" id="level2" min="1" max="10" value="5">
+        </label>
+      </div>
+      <div class="row">
+        <label>Variant
+          <select id="variant">
+            <option value="standard">Standard</option>
+            <option value="chess960">Chess960</option>
+          </select>
+        </label>
+        <label id="position-row" class="hidden">Start position
+          <span class="inline">
+            <input type="number" id="position" min="0" max="959" value="518">
+            <button type="button" id="random-position">Random</button>
+          </span>
+        </label>
+      </div>
+      <div class="row buttons">
+        <button type="button" id="new-game" class="primary">New game</button>
+        <button type="button" id="pause" class="hidden">Pause</button>
+        <button type="button" id="flip">Flip board</button>
+      </div>
+    </form>
+
+    <div class="start-fen hidden" id="start-fen"></div>
+
+    <div class="moves-box">
+      <ol id="moves" class="moves"></ol>
+      <div id="result" class="result"></div>
+    </div>
+
+    <div class="row buttons">
+      <a id="lichess" class="button" target="_blank" rel="noopener">Open in Lichess</a>
+      <button type="button" id="copy-pgn">Copy PGN</button>
+    </div>
+
+    <p class="about">
+      Pedagog is a single-file pedagogical chess engine; level 10 is its full strength
+      (about 120 Elo above Maia-1900 at one node), level 1 plays random moves.
+      Board by <a href="https://github.com/lichess-org/chessground">chessground</a> (GPL-3),
+      rules by <a href="https://github.com/shaack/cm-chess">cm-chess</a> (MIT).
+      Works offline once loaded.
+    </p>
+  </section>
+</main>
+
+<script type="module" src="web/app.js"></script>
+</body>
+</html>

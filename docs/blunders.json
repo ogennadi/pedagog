@@ -1,0 +1,78 @@
+{
+  "judge": "Stockfish depth 12",
+  "blunder": ">= 20 pp win-probability loss",
+  "mistake": ">= 10 pp",
+  "excluded": "|eval| > 600 cp before the move",
+  "levels": {
+    "1": {
+      "games": 80,
+      "moves": 231,
+      "blunder_rate": 0.4588744588744589,
+      "mistake_rate": 0.1645021645021645,
+      "mean_loss_pct": 23.53759374718735
+    },
+    "2": {
+      "games": 80,
+      "moves": 503,
+      "blunder_rate": 0.21073558648111332,
+      "mistake_rate": 0.13916500994035785,
+      "mean_loss_pct": 11.5584166887766
+    },
+    "3": {
+      "games": 80,
+      "moves": 694,
+      "blunder_rate": 0.17579250720461095,
+      "mistake_rate": 0.15561959654178675,
+      "mean_loss_pct": 10.893573309705681
+    },
+    "4": {
+      "games": 80,
+      "moves": 612,
+      "blunder_rate": 0.18627450980392157,
+      "mistake_rate": 0.1503267973856209,
+      "mean_loss_pct": 10.839550055684263
+    },
+    "5": {
+      "games": 80,
+      "moves": 1115,
+      "blunder_rate": 0.14349775784753363,
+      "mistake_rate": 0.12645739910313902,
+      "mean_loss_pct": 8.35836709128618
+    },
+    "6": {
+      "games": 80,
+      "moves": 1140,
+      "blunder_rate": 0.12280701754385964,
+      "mistake_rate": 0.11315789473684211,
+      "mean_loss_pct": 7.63895316279553
+    },
+    "7": {
+      "games": 80,
+      "moves": 1494,
+      "blunder_rate": 0.08500669344042838,
+      "mistake_rate": 0.13654618473895583,
+      "mean_loss_pct": 6.496821445009309
+    },
+    "8": {
+      "games": 80,
+      "moves": 1703,
+      "blunder_rate": 0.0739870816206694,
+      "mistake_rate": 0.11509101585437463,
+      "mean_loss_pct": 5.668666774411741
+    },
+    "9": {
+      "games": 80,
+      "moves": 1674,
+      "blunder_rate": 0.07945041816009558,
+      "mistake_rate": 0.12305854241338113,
+      "mean_loss_pct": 5.778269036064236
+    },
+    "10": {
+      "games": 80,
+      "moves": 1898,
+      "blunder_rate": 0.06691253951527924,
+      "mistake_rate": 0.09536354056902002,
+      "mean_loss_pct": 5.088147159885868
+    }
+  }
+}

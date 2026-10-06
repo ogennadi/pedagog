@@ -6,7 +6,10 @@
   "scripts": {
     "start": "bun pedagog.js",
     "bench": "bun pedagog.js bench",
-    "perft": "bun pedagog.js perft"
+    "perft": "bun pedagog.js perft",
+    "web": "bun tools/serve.js",
+    "match": "bun tools/match.js",
+    "elo": "bun tools/elo.js"
   },
   "private": true
 }

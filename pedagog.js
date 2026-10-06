@@ -18,19 +18,23 @@
    and captures-first move ordering, with a plain piece-square
    evaluation, and nothing else. Measured against Maia-1900 it is
    about 120 Elo stronger than a 1900 player, which is where a first
-   engine should be (see COLOPHON.md).
+   engine should be. Below full strength, Skill_Level weakens it the
+   way Gaia does: it looks less far ahead, judges positions more
+   crudely, misjudges them on purpose, and overlooks some moves
+   entirely (see COLOPHON.md for the measured ladder).
 ================================================================
 
    TABLE OF CONTENTS
    -----------------
    S0  Constants           Pieces, squares, move encoding
    S1  Search              Iterative deepening, alpha-beta, move ordering
-   S2  Evaluation          A naive piece-square evaluation + Skill_Seed
-   S3  Board               0x88 board, make/unmake, draws, FEN, notation
-   S4  Move Generation     Pseudo-legal moves, Chess960 castling
-   S5  Attacks             Is a square attacked?
-   S6  Zobrist Hashing     Position keys for repetition detection
-   S7  UCI                 Options (next to "uciok"), bench, perft, I/O
+   S2  Skill Levels        Depth ceiling, blunders, vision
+   S3  Evaluation          A naive piece-square evaluation
+   S4  Board               0x88 board, make/unmake, draws, FEN, notation
+   S5  Move Generation     Pseudo-legal moves, Chess960 castling
+   S6  Attacks             Is a square attacked?
+   S7  Zobrist Hashing     Position keys for repetition detection
+   S8  UCI                 Options (next to "uciok"), bench, perft, I/O
    COLOPHON                See COLOPHON.md
 ================================================================
 */
@@ -138,7 +142,7 @@ const moveStack = new Int32Array((MAX_PLY + 2) * MAX_MOVES);   // one slice of m
 const captureStack = new Int8Array((MAX_PLY + 2) * MAX_MOVES); // 1 if the move at that index captures
 const pvTable = new Int32Array(MAX_PLY * MAX_PLY);             // triangular PV table
 const pvLength = new Int32Array(MAX_PLY);
-const rootExcluded = [];                                       // MultiPV: moves already reported
+const rootSkipped = [];                                        // root moves not to search (MultiPV, vision)
 
 let multiPV = 1;
 
@@ -149,19 +153,22 @@ let multiPV = 1;
    what we play; an interrupted iteration is discarded. */
 function think() {
   startTime = now(); nodes = 0; stopped = false; rootDepth = 0;
+  if (skillLevel === 1) { playRandomly(); return; }
 
   const rootMoves = legalMoves();
   if (rootMoves.length === 0) { out("bestmove 0000"); return; }
-  const lines = Math.min(multiPV, rootMoves.length);
+  const unseen = overlookedRootMoves(rootMoves);
+  const lines = Math.min(multiPV, rootMoves.length - unseen.length);
+  const maxDepth = Math.min(depthLimit, skillDepth());
 
-  let bestMove = rootMoves[0], ponderMove = 0;
-  for (let depth = 1; depth <= depthLimit; depth++) {
+  let bestMove = rootMoves.find((m) => !unseen.includes(m)), ponderMove = 0;
+  for (let depth = 1; depth <= maxDepth; depth++) {
     rootDepth = depth;
-    rootExcluded.length = 0;
+    rootSkipped.length = 0; rootSkipped.push(...unseen);
     for (let line = 0; line < lines; line++) {
       const score = search(-INF, INF, depth, 0);
       if (stopped) break;
-      rootExcluded.push(pvTable[0]);
+      rootSkipped.push(pvTable[0]);
       if (line === 0) { bestMove = pvTable[0]; ponderMove = pvLength[0] > 1 ? pvTable[1] : 0; }
       report(depth, line, score);
     }
@@ -182,13 +189,15 @@ function search(alpha, beta, depth, ply) {
   const first = ply * MAX_MOVES, last = generateMoves(first);
   markCaptures(first, last);
 
-  let bestScore = -INF, legal = 0;
+  let bestScore = -INF, legal = 0, searched = 0;
   for (let i = first; i < last; i++) {
     pickMove(i, last);
     const m = moveStack[i];
-    if (ply === 0 && rootExcluded.includes(m)) continue;
+    if (ply === 0 && rootSkipped.includes(m)) continue;
     if (!makeMove(m)) continue;                  // leaves our king in check
     legal++;
+    if (ply > 0 && !seesMove(m, ply)) { unmakeMove(); continue; }   // a weakened player overlooks it
+    searched++;
     const score = -search(-beta, -alpha, depth - 1, ply + 1);
     unmakeMove();
     if (stopped) return 0;
@@ -204,6 +213,7 @@ function search(alpha, beta, depth, ply) {
   }
 
   if (legal === 0) return isAttacked(kingSq[side], side ^ 1) ? -MATE + ply : DRAW;   // mate or stalemate
+  if (searched === 0) return evaluate();        // saw no move at all: judge the position as it stands
   return bestScore;
 }
 
@@ -243,11 +253,14 @@ function updatePV(ply, m) {
 /* ---- Time management -------------------------------------------
    Two budgets: a soft one (do not start another iteration after it)
    and a hard one (abort the search). The first iteration is never
-   aborted so there is always a move to play. */
+   aborted so there is always a move to play. Below full strength
+   the clock is ignored: a level is a depth, never a time budget, so
+   it plays the same on any machine. */
 function setLimits(go) {
   depthLimit = go.depth || MAX_PLY;
   nodeLimit = go.nodes || 0;
   timeSoft = timeHard = Infinity;
+  if (skillLevel < SKILL_MAX) return;
   const overhead = 20;
   if (go.movetime) {
     timeSoft = timeHard = Math.max(1, go.movetime - overhead);
@@ -280,7 +293,146 @@ function report(depth, line, score) {
 }
 
 /* ================================================================
-   S2  EVALUATION
+   S2  SKILL LEVELS
+   ================================================================
+
+   Deliberately weakened play, for opponents meant to be beatable,
+   after Gaia (jromang/gaiachess, src/skill.rs). At full strength
+   every function here is inert and the search is exactly S1.
+
+   Searching less far is not enough on its own: a shallow but
+   otherwise flawless player is dull, never careless. So a level
+   turns three knobs at once:
+
+     depth      how far ahead it looks, plus a chance of one extra
+                ply on some positions so a rung can sit between two
+                whole depths (a ply is a very coarse unit);
+     blunder    now and then it misjudges a position by a lot, which
+                is how human mistakes are actually distributed: the
+                odd catastrophe rather than a constant drizzle;
+     vision     the chance that it so much as considers a move. This
+                is what makes the low levels leave pieces hanging,
+                and miss mates in one. Captures and checks are hard
+                to miss, so they get two chances. Vision fades with
+                distance from the root: a move six plies away is
+                harder to picture than one two plies away.
+
+   (Gaia has a fourth knob, evaluation fidelity, and a small error
+   on every position. Both were measured here and found to be worth
+   nothing with this evaluation, so they were left out; see
+   COLOPHON.md.)
+
+   Every choice is drawn from the position's hash and the Skill_Seed,
+   never from the clock or a random generator, so a level misjudges
+   the same position the same way every time: stable blind spots, not
+   a tremor. Level 1 is apart: it plays a random legal move, but
+   always mates in one when it can. Levels 2..SKILL_MAX-1 come from
+   the LADDER below; their ratings were measured against Maia and
+   are recorded in COLOPHON.md.
+*/
+
+const SKILL_MAX = 10;
+const FULL_VISION = 1024;
+const VISION_SLOPE = 16, VISION_FLOOR = 160;   // vision lost per ply, and its minimum
+
+const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
+  ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
+
+/* The ladder, from a beginner's opponent to full strength, about 125 Elo a
+   rung as measured against Maia (Maia-1900 = 1900; see COLOPHON.md). */
+const LADDER = [
+  //   depth  deeper  blunder  b/1000  vision             measured Elo
+  null,                                          //  1  random mover    ~320
+  rung(2,     100,     500,     45,     860),    //  2                 1090
+  rung(2,     200,     450,     40,     910),    //  3                 1217
+  rung(2,     400,     400,     35,     945),    //  4                 1340
+  rung(2,     650,     400,     25,     967),    //  5                 1454
+  rung(3,       0,     350,     20,     980),    //  6                 1562
+  rung(3,     650,     300,     15,    1000),    //  7                 1698
+  rung(4,      50,       0,      0,    FULL_VISION),   //  8           1801
+  rung(4,     600,       0,      0,    FULL_VISION),   //  9           1934
+  rung(MAX_PLY, 0,       0,      0,    FULL_VISION),   // 10  full strength  2039
+];
+
+let skillLevel = SKILL_MAX, skill = LADDER[SKILL_MAX - 1];
+let skillSeed = 0, seedKey = 0;
+
+function setSkillLevel(level) {
+  skillLevel = Math.min(SKILL_MAX, Math.max(1, level | 0));
+  skill = LADDER[skillLevel - 1] || LADDER[SKILL_MAX - 1];
+}
+
+/* Skill_Seed: which weakened opponent a level is. 0 means the built-in
+   one, so an engine nobody configures still plays the same game twice.
+   At full strength nothing is drawn from it, so it has no effect. */
+function setSkillSeed(seed) {
+  skillSeed = seed | 0;
+  seedKey = mix32(skillSeed === 0 ? 0x9E3779B9 : skillSeed);
+}
+
+/* Depth ceiling for the position on the board: the rung's depth, and
+   one more on the rung's share of positions, decided by the hash. */
+function skillDepth() {
+  if (skill.deeperPermille === 0) return skill.depth;
+  const h = mix32(keyLo ^ seedKey ^ 0xA5A55A5A);
+  return skill.depth + (h % 1000 < skill.deeperPermille ? 1 : 0);
+}
+
+/* The occasional misjudgement, added to the evaluation of the rung's
+   share of positions: up to blunderWindow centipawns either way. Mate
+   scores never pass through here, since they come from the search,
+   not from evaluate(). */
+function blunder() {
+  if (skill.blunderWindow === 0) return 0;
+  const h = mix32(keyLo ^ Math.imul(keyHi, 0x9E3779B9) ^ seedKey);
+  if (h % 1000 >= skill.blunderPermille) return 0;
+  return (mix32(h) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
+}
+
+/* Does the player notice this move at all? Called after makeMove(),
+   so the key is the child's and "gives check" is known. */
+function seesMove(m, ply) {
+  if (skill.vision >= FULL_VISION) return true;
+  const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
+  const h = mix32(keyLo ^ Math.imul(m, 0x9E3779B9) ^ seedKey);
+  if (((h >>> 20) & 1023) < chance) return true;
+  const easy = histCaptured[hply - 1] !== EMPTY || moveFlag(m) === FLAG_EP || isAttacked(kingSq[side], side ^ 1);
+  return easy && ((h >>> 8) & 1023) < chance;
+}
+
+/* Root moves the player overlooks. If it would overlook them all, it
+   sees them all: a move has to be played. */
+function overlookedRootMoves(rootMoves) {
+  if (skill.vision >= FULL_VISION) return [];
+  const unseen = [];
+  for (const m of rootMoves) { makeMove(m); if (!seesMove(m, 0)) unseen.push(m); unmakeMove(); }
+  return unseen.length === rootMoves.length ? [] : unseen;
+}
+
+/* Level 1: a random legal move, unless a move mates on the spot. */
+function playRandomly() {
+  const moves = legalMoves();
+  if (moves.length === 0) { out("bestmove 0000"); return; }
+  let choice = moves[mix32(keyLo ^ seedKey) % moves.length];
+  for (const m of moves) {
+    makeMove(m);
+    const mate = legalMoves().length === 0 && isAttacked(kingSq[side], side ^ 1);
+    unmakeMove();
+    if (mate) { choice = m; break; }
+  }
+  out(`info depth 1 multipv 1 score cp 0 nodes ${moves.length} nps 0 time 0 pv ${moveToUci(choice)}`);
+  out("bestmove " + moveToUci(choice));
+}
+
+/* A 32-bit integer hash finaliser (two multiply-xorshift rounds). */
+function mix32(x) {
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  return (x ^ (x >>> 16)) >>> 0;
+}
+
+/* ================================================================
+   S3  EVALUATION
    ================================================================
 
    A deliberately naive evaluation: material plus piece-square
@@ -293,13 +445,14 @@ function report(depth, line, score) {
 
    evaluate() simply walks the board and adds up the tables. (Real
    engines keep these sums up to date in make/unmake instead, which
-   is faster but spreads the evaluation over three functions.)
+   is faster but spreads the evaluation over three functions.) The
+   skill level's occasional blunder is added at the end.
 */
 
 const MG_VALUE = [0, 100, 320, 330, 500, 900, 0];
 const EG_VALUE = [0, 120, 320, 330, 520, 920, 0];
 const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];    // 24 at the start, 0 when only kings and pawns remain
-const pstMg = new Int16Array(16 * 128), pstEg = new Int16Array(16 * 128);
+const pstMg = new Int16Array(16 * 128), pstEg = new Int16Array(16 * 128);   // material + placement, signed by colour
 
 /* Bonus for a white piece of `type` on file f, rank r (0 = rank 1). */
 function squareBonus(type, f, r) {
@@ -338,39 +491,11 @@ function evaluate() {
   }
   if (phase > 24) phase = 24;
   const score = ((mg * phase + eg * (24 - phase)) / 24) | 0;   // taper: all mg at the start, all eg at the end
-  return (side === WHITE ? score : -score) + noise();
-}
-
-/* ---- Skill_Seed -------------------------------------------------
-   Like Gaia, the engine's small evaluation "errors" are not random
-   but a function of the position's hash and a seed. The same seed
-   always plays the same game from the same position; a different
-   seed is a different opponent with its own fixed blind spots. This
-   gives variety between games without giving up reproducibility.
-   The nudge is a few centipawns: enough to vary the games, not to
-   change the strength. */
-const NOISE = 8;                       // half-width in centipawns
-let skillSeed = 0, seedKey = 0;
-
-function setSkillSeed(seed) {
-  skillSeed = seed | 0;
-  seedKey = mix32(skillSeed === 0 ? 0x9E3779B9 : skillSeed);   // 0 means "the built-in opponent"
-}
-
-function noise() {
-  const h = mix32(keyLo ^ Math.imul(keyHi, 0x9E3779B9) ^ seedKey);
-  return (h % (2 * NOISE + 1)) - NOISE;
-}
-
-/* A 32-bit integer hash finaliser (two multiply-xorshift rounds). */
-function mix32(x) {
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  return (x ^ (x >>> 16)) >>> 0;
+  return (side === WHITE ? score : -score) + blunder();
 }
 
 /* ================================================================
-   S3  BOARD
+   S4  BOARD
    ================================================================
 
    The position is a set of module-level variables rather than an
@@ -592,7 +717,7 @@ function legalMoves() {
 }
 
 /* ================================================================
-   S4  MOVE GENERATION
+   S5  MOVE GENERATION
    ================================================================
 
    Pseudo-legal generation: moves may leave the king in check, and
@@ -669,7 +794,7 @@ function generateMoves(first) {
 }
 
 /* ================================================================
-   S5  ATTACKS
+   S6  ATTACKS
    ================================================================
 
    Is square s attacked by colour `by`? We look outward from s: is
@@ -706,7 +831,7 @@ function isAttacked(s, by) {
 }
 
 /* ================================================================
-   S6  ZOBRIST HASHING
+   S7  ZOBRIST HASHING
    ================================================================
 
    Each (piece, square), each castling-rights set, each en passant
@@ -739,7 +864,7 @@ function initZobrist() {
 }
 
 /* ================================================================
-   S7  UCI
+   S8  UCI
    ================================================================
 
    The Universal Chess Interface: a GUI (or a match manager such as
@@ -762,6 +887,7 @@ function uciCommand(line) {
       out("option name Threads type spin default 1 min 1 max 1");        // accepted for OpenBench; always single-threaded
       out("option name MultiPV type spin default 1 min 1 max 256");      // number of best lines to report
       out("option name UCI_Chess960 type check default false");          // castling notation: king-takes-rook
+      out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`); // 1 = random mover, SKILL_MAX = full strength
       out("option name Skill_Seed type spin default 0 min 0 max 2147483647"); // which deterministic opponent; 0 = built-in
       out("uciok");
       break;
@@ -771,6 +897,7 @@ function uciCommand(line) {
       const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
       if (name === "multipv") multiPV = Math.min(256, Math.max(1, parseInt(value) || 1));
       else if (name === "uci_chess960") chess960 = value.toLowerCase() === "true";
+      else if (name === "skill_level") setSkillLevel(parseInt(value) || SKILL_MAX);
       else if (name === "skill_seed") setSkillSeed(parseInt(value) || 0);
       // "hash" and "threads" are accepted and ignored
       break;
@@ -851,7 +978,8 @@ const BENCH_FENS = [
 ];
 
 function bench(depth) {
-  const savedOut = out;
+  const savedOut = out, savedLevel = skillLevel;
+  setSkillLevel(SKILL_MAX);
   let totalNodes = 0, totalMs = 0;
   for (const fen of BENCH_FENS) {
     setPosition(fen);
@@ -864,6 +992,7 @@ function bench(depth) {
     totalNodes += nodes;
     out(`info string ${nodes} nodes  ${fen}`);
   }
+  setSkillLevel(savedLevel);
   out(`${totalNodes} nodes ${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`);
 }
 
