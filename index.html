@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Pedagog — UCI in the browser</title>
+<style>
+  body { font: 14px/1.4 ui-monospace, monospace; max-width: 60em; margin: 2em auto; }
+  pre { background: #f4f4f4; padding: 1em; height: 24em; overflow: auto; white-space: pre-wrap; }
+  input { width: 100%; font: inherit; padding: .4em; box-sizing: border-box; }
+</style>
+<h1>Pedagog</h1>
+<p>The engine runs in a Web Worker. Type UCI commands, e.g. <code>uci</code>, <code>position startpos</code>, <code>go depth 8</code>, <code>stop</code>.</p>
+<pre id="log"></pre>
+<input id="cmd" placeholder="UCI command, then Enter" autofocus>
+<script>
+  const log = document.getElementById("log"), input = document.getElementById("cmd");
+  const worker = new Worker("pedagog.js");
+  // With cross-origin isolation (COOP/COEP headers) a shared flag lets "stop"
+  // interrupt a running search; without it, "stop" waits for the search to end.
+  const stopFlag = typeof SharedArrayBuffer !== "undefined" ? new Int32Array(new SharedArrayBuffer(4)) : null;
+  if (stopFlag) worker.postMessage({ stopFlag });
+  worker.onmessage = (e) => { log.textContent += e.data + "\n"; log.scrollTop = log.scrollHeight; };
+  function send(line) {
+    log.textContent += "> " + line + "\n";
+    if (line.trim() === "stop" && stopFlag) Atomics.store(stopFlag, 0, 1);
+    else { if (line.trim().startsWith("go") && stopFlag) Atomics.store(stopFlag, 0, 0); worker.postMessage(line); }
+  }
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { send(input.value); input.value = ""; } });
+  send("uci");
+</script>
