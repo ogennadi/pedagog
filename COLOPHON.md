@@ -101,15 +101,20 @@ the horizon effect of a search without quiescence, and the next chapter.
 `index.html` + `web/`: chessground for the board, cm-chess for legality
 (including Chess960 castling), the engine in a Web Worker. Human vs bot or
 bot vs bot, a level per bot, standard or Chess960 (position 0–959 or random,
-selector shown only for that variant), move list, captured pieces with
-material balance, elapsed time per side (never enforced), "Open in Lichess"
-at any moment (PGN with `[Variant]`/`[FEN]` tags), copy PGN. Serve it with
-`bun run web` (or any static host); a service worker caches everything so it
-keeps working offline and can be installed on a phone. Bot time is fixed:
-levels 1–9 are depth-bounded and answer in milliseconds, level 10 thinks for
-one second. Vendored: chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1
-(MIT), cm-pgn 5.0.1 (MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore
-GPL-3; the engine file is independent of it.
+selector shown only for that variant), move list with the opening's name,
+captured pieces with material balance, elapsed time per side (never
+enforced), "Open in Lichess" at any moment (PGN with `[Variant]`/`[FEN]`
+tags), copy PGN. In standard chess bots at levels 2–10 open from
+`web/book.js`, a hundred lines in SAN — 75 mainstream openings (Ruy Lopez to
+Catalan, ECO-tagged) and 25 offbeat ones (King's Gambit, Englund, Grob, …) —
+picking at random among the lines that still match the game; the engine
+itself has no book. Serve it with `bun run web` (or any static host); a
+service worker caches everything so it keeps working offline and can be
+installed on a phone. Bot time is fixed: levels 1–9 are depth-bounded and
+answer in milliseconds, level 10 thinks for one second. Vendored:
+chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1 (MIT), cm-pgn 5.0.1
+(MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore GPL-3; the engine
+file is independent of it.
 
 ### Tools
 
@@ -137,6 +142,10 @@ Follow-up decisions during Part II:
 > Before starting a long-run. Recommend the knobs that actually make a diffrence
 >
 > Drop fidelity AND the small error; keep depth, vision, blunder only
+
+> Rescale the Elo ratings based on Maia1900's current classical rating on Lichess
+
+> Make the webapp use an opening book with about 100 openings, mostly based on human openings but with a quarter offbeat openings
 
 ## Part I — How strong it is, and how that was measured
 

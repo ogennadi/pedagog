@@ -2,6 +2,7 @@
    Human vs bot or bot vs bot, standard chess or Chess960, offline once loaded. */
 import { Chessground } from "chessground";
 import { Chess, GAME_VARIANT } from "cm-chess/src/Chess.js";
+import { BOOK } from "./book.js";
 
 const $ = (id) => document.getElementById(id);
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -77,6 +78,46 @@ function chess960Fen(n) {
   nth(0, "r"); nth(0, "k"); nth(0, "r");
   const black = row.join(""), white = black.toUpperCase();
   return `${black}/pppppppp/8/8/8/8/PPPPPPPP/${white} w KQkq - 0 1`;
+}
+
+/* ---- Opening book (standard chess only). A line matches when every move played so far is
+   its prefix; "+" and "#" are ignored when comparing. */
+const plain = (san) => san.replace(/[+#]/g, "");
+const bookLines = BOOK.map((o) => ({ ...o, line: o.moves.split(" ") }));
+
+function matchingLines(played) {
+  return bookLines.filter((o) => o.line.length >= played.length && played.every((san, i) => plain(san) === plain(o.line[i])));
+}
+
+/* The next book move for the side to move, chosen at random among the lines still in play. */
+function bookMove() {
+  if (variant !== "standard") return null;
+  const played = game.history().map((m) => m.san);
+  const open = matchingLines(played).filter((o) => o.line.length > played.length);
+  if (open.length === 0) return null;
+  const pick = open[Math.floor(Math.random() * open.length)];
+  return { san: pick.line[played.length], opening: pick };
+}
+
+/* The name of the longest book line the game has followed so far, if any. */
+function openingName() {
+  if (variant !== "standard") return "";
+  const played = game.history().map((m) => m.san);
+  let best = null;
+  for (const o of bookLines) {
+    if (o.line.length <= played.length && o.line.every((san, i) => plain(san) === plain(played[i])) && (!best || o.line.length > best.line.length)) best = o;
+  }
+  return best ? `${best.name} (${best.eco})` : "";
+}
+
+/* Plays every book line through cm-chess and reports the ones with an illegal move. */
+function validateBook() {
+  const errors = [];
+  for (const o of bookLines) {
+    const c = new Chess();
+    for (const san of o.line) if (!c.move(san)) { errors.push(`${o.name}: ${san} after ${c.history().map((m) => m.san).join(" ")}`); break; }
+  }
+  return { lines: bookLines.length, offbeat: bookLines.filter((o) => o.offbeat).length, errors };
 }
 
 /* ---- Game state */
@@ -166,6 +207,7 @@ function refreshMoves() {
   }
   $("result").textContent = finished ? resultText() : "";
   if (viewPly === null) ol.parentElement.scrollTop = ol.parentElement.scrollHeight;
+  $("opening").textContent = openingName();
   refreshLinks();
 }
 
@@ -217,9 +259,19 @@ async function scheduleBot() {
   if (finished || paused || thinking || !isBot(colour)) { if (!finished && !thinking) setStatus(isBot(colour) ? "paused" : "your move"); return; }
   thinking = true;
   const id = gameId;
-  setStatus(`level ${players[colour]} is thinking`, true);
+  const level = players[colour];
+  const book = level > 1 ? bookMove() : null;
+  if (book) {
+    setStatus(`level ${level} plays from the book: ${book.opening.name}`);
+    await new Promise((r) => setTimeout(r, 400));          // a beat, so book moves do not flash by
+    if (id !== gameId) return;
+    thinking = false;
+    if (!playMove(book.san)) { console.error("book move rejected", book); setStatus("book move rejected: " + book.san); }
+    return;
+  }
+  setStatus(`level ${level} is thinking`, true);
   try {
-    const uci = await engine.bestMove({ startFen, moves: uciMoves, level: players[colour], chess960: variant === "chess960" });
+    const uci = await engine.bestMove({ startFen, moves: uciMoves, level, chess960: variant === "chess960" });
     if (id !== gameId) return;                           // a new game was started meanwhile
     thinking = false;
     const move = { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.length > 4 ? uci[4] : undefined };
@@ -294,6 +346,6 @@ setInterval(refreshClocks, 250);
 
 refreshAll();
 engine.ready.then(() => setStatus(`engine ready (${engine.mode}) — press New game`)).catch((e) => setStatus("engine failed to load: " + e.message));
-globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame };   // for the console and tests
+globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines };   // for the console and tests
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});

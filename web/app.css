@@ -62,5 +62,6 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
 .moves .san { cursor: pointer; padding: 0 .25rem; border-radius: .2rem; }
 .moves .san:hover { background: #4a4a4a; }
 .moves .san.current { background: var(--accent); color: #111; }
+.opening { color: var(--muted); font-size: .85rem; margin-bottom: .3rem; min-height: 1.2em; }
 .result { margin-top: .5rem; font-weight: 600; color: var(--accent); }
 .about { color: var(--muted); font-size: .8rem; margin: 0; }
