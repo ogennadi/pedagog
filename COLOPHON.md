@@ -46,30 +46,35 @@ there (as in Gaia; variety comes from the opening book).
 Method: every level played 300 games against the level below and 300 against
 each of Maia-1100 and Maia-1900 (some also Maia-1500), level 10 at 10+0.1,
 all others depth-bounded; `tools/elo.js` fits one rating to all results
-(Elo logistic model, draws as half points, Maia-1900 anchored at 1900) with
-bootstrap intervals. Nine tuning rounds; the final data are in
-`docs/skill-curve.json`. Note that the three Maias span only ~220 Elo against
-engines (1683 / 1815 / 1900 here), whatever their human-pool labels say.
+(Elo logistic model, draws as half points) with bootstrap intervals. The
+scale is anchored on **Maia-1900 = 1755**, the Lichess classical rating of
+the bot that runs that network (`maia9`: 1755, RD 45, 141,012 games on
+2026-10-06), so the numbers below read as Lichess classical ratings. Nine
+tuning rounds; the final data are in `docs/skill-curve.json`. Note that the
+three Maias span only ~220 Elo against engines (1538 / 1670 / 1755 here),
+whatever their training labels say.
 
 | level | depth | +1 ply share | blunder | vision | **Elo** (95 %) | gap to level below (fit) | head-to-head |
 |---|---|---|---|---|---|---|---|
-| 1 | random mover, mates in one | | | | **318** [134, 485] | — | — |
-| 2 | 2 | 10 % | 500 cp @ 4.5 % | 860 | **1090** [1035, 1138] | 771 | 771 |
-| 3 | 2 | 20 % | 450 cp @ 4.0 % | 910 | **1217** [1173, 1256] | 128 | 151 |
-| 4 | 2 | 40 % | 400 cp @ 3.5 % | 945 | **1340** [1307, 1369] | 122 | 167 |
-| 5 | 2 | 65 % | 400 cp @ 2.5 % | 967 | **1454** [1423, 1483] | 115 | 173 |
-| 6 | 3 | — | 350 cp @ 2.0 % | 980 | **1562** [1527, 1584] | 108 | 207 |
-| 7 | 3 | 65 % | 300 cp @ 1.5 % | 1000 | **1698** [1674, 1721] | 136 | 290 |
-| 8 | 4 | 5 % | — | full | **1801** [1781, 1825] | 103 | 241 |
-| 9 | 4 | 60 % | — | full | **1934** [1907, 1958] | 133 | 228 |
-| 10 | full strength (clock) | | — | full | **2039** [2003, 2066] | 105 | 119 |
+| 1 | random mover, mates in one | | | | **173** [−11, 340] | — | — |
+| 2 | 2 | 10 % | 500 cp @ 4.5 % | 860 | **945** [890, 993] | 771 | 771 |
+| 3 | 2 | 20 % | 450 cp @ 4.0 % | 910 | **1072** [1028, 1111] | 128 | 151 |
+| 4 | 2 | 40 % | 400 cp @ 3.5 % | 945 | **1195** [1162, 1224] | 122 | 167 |
+| 5 | 2 | 65 % | 400 cp @ 2.5 % | 967 | **1309** [1278, 1338] | 115 | 173 |
+| 6 | 3 | — | 350 cp @ 2.0 % | 980 | **1417** [1382, 1439] | 108 | 207 |
+| 7 | 3 | 65 % | 300 cp @ 1.5 % | 1000 | **1553** [1529, 1576] | 136 | 290 |
+| 8 | 4 | 5 % | — | full | **1656** [1636, 1680] | 103 | 241 |
+| 9 | 4 | 60 % | — | full | **1789** [1762, 1813] | 133 | 228 |
+| 10 | full strength (clock) | | — | full | **1894** [1858, 1921] | 105 | 119 |
 
 All eight gaps between levels 2 and 10 fall in the requested 100–150 band on
 the joint fit (the "global" scale). Head-to-head gaps between adjacent levels
 (the "local" measure) are systematically larger — two engines with the same
 blind spots exaggerate their difference — which is why the ladder was tuned
 on the joint fit. The top is structurally tight: pure depth 5 is already full
-strength here, so levels 7–10 have to share about 340 Elo.
+strength here, so levels 7–10 have to share about 340 Elo. (The ladder was
+tuned with Maia-1900 anchored at its nominal 1900; re-anchoring to 1755 only
+shifts every rating by −145 and changes no gap.)
 
 ![skill curve](docs/skill-curve.png)
 

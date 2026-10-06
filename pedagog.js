@@ -17,11 +17,11 @@
    It is deliberately a base engine: iterative deepening, alpha-beta
    and captures-first move ordering, with a plain piece-square
    evaluation, and nothing else. Measured against Maia-1900 it is
-   about 120 Elo stronger than a 1900 player, which is where a first
-   engine should be. Below full strength, Skill_Level weakens it the
-   way Gaia does: it looks less far ahead, judges positions more
-   crudely, misjudges them on purpose, and overlooks some moves
-   entirely (see COLOPHON.md for the measured ladder).
+   about 140 Elo stronger than that network, which puts its full
+   strength around 1900 on the Lichess classical scale. Below full
+   strength, Skill_Level weakens it the way Gaia does: it looks less
+   far ahead, misjudges some positions on purpose, and overlooks some
+   moves entirely (see COLOPHON.md for the measured ladder).
 ================================================================
 
    TABLE OF CONTENTS
@@ -339,19 +339,21 @@ const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
   ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
 
 /* The ladder, from a beginner's opponent to full strength, about 125 Elo a
-   rung as measured against Maia (Maia-1900 = 1900; see COLOPHON.md). */
+   rung as measured against Maia. The ratings are on the Lichess classical
+   scale: Maia-1900's bot (maia9) was rated 1755 there when this was
+   measured, and the fit is anchored on it (see COLOPHON.md). */
 const LADDER = [
   //   depth  deeper  blunder  b/1000  vision             measured Elo
-  null,                                          //  1  random mover    ~320
-  rung(2,     100,     500,     45,     860),    //  2                 1090
-  rung(2,     200,     450,     40,     910),    //  3                 1217
-  rung(2,     400,     400,     35,     945),    //  4                 1340
-  rung(2,     650,     400,     25,     967),    //  5                 1454
-  rung(3,       0,     350,     20,     980),    //  6                 1562
-  rung(3,     650,     300,     15,    1000),    //  7                 1698
-  rung(4,      50,       0,      0,    FULL_VISION),   //  8           1801
-  rung(4,     600,       0,      0,    FULL_VISION),   //  9           1934
-  rung(MAX_PLY, 0,       0,      0,    FULL_VISION),   // 10  full strength  2039
+  null,                                          //  1  random mover    ~170
+  rung(2,     100,     500,     45,     860),    //  2                  945
+  rung(2,     200,     450,     40,     910),    //  3                 1072
+  rung(2,     400,     400,     35,     945),    //  4                 1195
+  rung(2,     650,     400,     25,     967),    //  5                 1309
+  rung(3,       0,     350,     20,     980),    //  6                 1417
+  rung(3,     650,     300,     15,    1000),    //  7                 1553
+  rung(4,      50,       0,      0,    FULL_VISION),   //  8           1656
+  rung(4,     600,       0,      0,    FULL_VISION),   //  9           1789
+  rung(MAX_PLY, 0,       0,      0,    FULL_VISION),   // 10  full strength  1894
 ];
 
 let skillLevel = SKILL_MAX, skill = LADDER[SKILL_MAX - 1];

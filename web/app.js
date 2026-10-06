@@ -7,6 +7,7 @@ const $ = (id) => document.getElementById(id);
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const FULL_STRENGTH = 10;
 const FULL_STRENGTH_MOVETIME = 1000;     // ms per move at level 10; lower levels are depth-bounded and ignore the clock
+const LEVEL_ELO = [173, 945, 1072, 1195, 1309, 1417, 1553, 1656, 1789, 1894];   // Lichess-classical scale, see COLOPHON.md
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 
 /* ---- Engine: UCI over postMessage. Falls back to running the engine on the main
@@ -285,7 +286,7 @@ $("mode").onchange = () => {
 };
 $("variant").onchange = () => $("position-row").classList.toggle("hidden", $("variant").value !== "chess960");
 $("random-position").onclick = () => { $("position").value = Math.floor(Math.random() * 960); };
-for (const id of ["level", "level2"]) { $(id).oninput = () => { $(`${id}-out`).textContent = $(id).value; }; $(id).oninput(); }
+for (const id of ["level", "level2"]) { $(id).oninput = () => { const v = parseInt($(id).value); $(`${id}-out`).textContent = `${v} (≈${LEVEL_ELO[v - 1]})`; }; $(id).oninput(); }
 $("new-game").onclick = newGame;
 $("flip").onclick = () => { cg.toggleOrientation(); refreshBars(); };
 $("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; if (!paused) { tickFrom = performance.now(); scheduleBot(); } else refreshBars(); };

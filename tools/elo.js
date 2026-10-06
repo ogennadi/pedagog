@@ -1,11 +1,12 @@
 // Fit Elo ratings to all games in tools/out/*.pgn (or the PGNs given on the command line).
 //
-//   bun tools/elo.js [--anchor maia-1900=1900] [--only L,maia] [--json docs/skill-curve.json] [files...]
+//   bun tools/elo.js [--anchor maia-1900=1755] [--anchor-note "..."] [--only L,maia] [--json docs/skill-curve.json] [files...]
 //
 // Model: Elo's logistic expectation E = 1 / (1 + 10^(-(Ra - Rb) / 400)); a draw counts half.
 // Ratings are found by iterating each player's rating so its expected total score matches its
 // actual total (a fixed-point Bradley-Terry fit), with the anchor held fixed. Uncertainty comes
-// from a bootstrap over games.
+// from a bootstrap over games. The default anchor is Maia-1900 at 1755, the Lichess classical
+// rating of the bot that runs that network (maia9, RD 45 over 141,012 games) on 2026-10-06.
 
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -13,7 +14,8 @@ import { resolve, dirname } from "node:path";
 const here = dirname(Bun.main);
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : def; };
-const [anchorName, anchorElo] = opt("--anchor", "maia-1900=1900").split("=");
+const [anchorName, anchorElo] = opt("--anchor", "maia-1900=1755").split("=");   // maia9's Lichess classical rating, 2026-10-06
+const anchorNote = opt("--anchor-note", "its Lichess classical rating on 2026-10-06");
 const only = opt("--only", "").split(",").filter(Boolean);
 const jsonOut = opt("--json", "");
 let files = args.filter((x, i) => !x.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
@@ -101,4 +103,4 @@ if (gaps.length) {
   console.log("\nadjacent gap          fitted   95% interval   head-to-head (games)");
   for (const g of gaps) console.log(`${(g.from + " -> " + g.to).padEnd(20)} ${String(g.fitted).padStart(6)}   [${g.lo}, ${g.hi}]`.padEnd(44) + `${g.direct ?? "-"} (${g.h2hGames})`);
 }
-if (jsonOut) writeFileSync(resolve(jsonOut), JSON.stringify({ anchor: { [anchorName]: parseFloat(anchorElo) }, ratings: rows, gaps, games: games.length }, null, 2));
+if (jsonOut) writeFileSync(resolve(jsonOut), JSON.stringify({ anchor: { [anchorName]: parseFloat(anchorElo) }, anchor_note: anchorNote, ratings: rows, gaps, games: games.length }, null, 2));

@@ -32,7 +32,9 @@ def main():
     maias = [r for r in elo["ratings"] if r["player"].startswith("maia")]
 
     fig, axes = plt.subplots(1, 3, figsize=(16, 5.2))
-    fig.suptitle("Pedagog Skill_Level calibration (vs Maia at one node; Maia-1900 anchored at 1900)", fontsize=12)
+    anchor_name, anchor_elo = next(iter(elo["anchor"].items()))
+    note = elo.get("anchor_note", "")
+    fig.suptitle(f"Pedagog Skill_Level calibration (vs Maia at one node; {anchor_name} anchored at {anchor_elo:.0f}{', ' + note if note else ''})", fontsize=12)
 
     # --- Panel 1: global Elo per level
     ax = axes[0]
