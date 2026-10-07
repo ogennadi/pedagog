@@ -6,9 +6,10 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent); }
-header { display: flex; align-items: baseline; gap: 1rem; padding: .5rem .75rem; }
-header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .08em; }
-.status { color: var(--muted); font-size: .9rem; }
+header { display: flex; align-items: baseline; gap: 1rem; padding: .5rem .75rem; height: 2.6rem; box-sizing: border-box; overflow: hidden; }
+header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .08em; flex: none; }
+/* One line, always: if the status wrapped, everything below it (the board!) would jump. */
+.status { color: var(--muted); font-size: .9rem; flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .status.thinking::after { content: " …"; }
 
 main { display: grid; grid-template-columns: 1fr; gap: .75rem; padding: 0 .5rem 1rem; max-width: 72rem; margin: 0 auto; }
@@ -18,19 +19,21 @@ main { display: grid; grid-template-columns: 1fr; gap: .75rem; padding: 0 .5rem 
 }
 
 .board-column { position: relative; width: var(--board); margin: 0 auto; }
-.board { width: var(--board); height: var(--board); }
+.board { width: var(--board); height: var(--board); touch-action: none; }   /* dragging must not scroll the page */
 .board .cg-wrap { width: 100%; height: 100%; }
-.player-bar { display: flex; align-items: center; gap: .5rem; padding: .3rem .25rem; min-height: 2.2rem; }
-.player-bar .name { font-weight: 600; white-space: nowrap; }
-.player-bar .clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 1.1rem; color: var(--muted); }
+/* The bars above and below the board have a fixed height for the same reason. */
+.player-bar { display: flex; align-items: center; gap: .5rem; padding: 0 .25rem; height: 2.4rem; overflow: hidden; }
+.player-bar .name { font-weight: 600; white-space: nowrap; flex: none; }
+.player-bar .clock { margin-left: auto; flex: none; font-variant-numeric: tabular-nums; font-size: 1.1rem; color: var(--muted); min-width: 3.2rem; text-align: right; }
 .player-bar.active .clock { color: var(--text); }
+.player-bar .name::before { content: "\00a0\00a0"; }   /* reserve the marker's width so the name does not jump */
 .player-bar.active .name::before { content: "▸ "; color: var(--accent); }
 
 /* Captured pieces reuse chessground's piece sprites: undo the board layout rules. */
-.captured { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0; position: static; width: auto; height: auto; }
-.captured piece { position: static; display: inline-block; width: 20px; height: 20px; margin-right: -6px; pointer-events: none; }
+.captured { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 0; position: static; width: auto; height: auto; min-width: 0; overflow: hidden; }
+.captured piece { position: static; display: inline-block; flex: none; width: 20px; height: 20px; margin-right: -6px; pointer-events: none; }
 .captured piece:last-of-type { margin-right: 0; }
-.captured .diff { margin-left: .5rem; color: var(--muted); font-size: .85rem; }
+.captured .diff { margin-left: .5rem; color: var(--muted); font-size: .85rem; white-space: nowrap; }
 
 .promotion { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; gap: .4rem; padding: .5rem; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 5; }
 .promotion button { width: 64px; height: 64px; padding: 0; background: #ddd; border: 0; border-radius: .4rem; }

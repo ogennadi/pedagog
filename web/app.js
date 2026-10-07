@@ -21,20 +21,25 @@ class Engine {
   }
   async start() {
     try {
-      this.worker = new Worker("pedagog.js");
-      this.worker.onmessage = (e) => this.onLine(e.data);
-      await new Promise((resolve, reject) => {
-        this.worker.onerror = (e) => reject(e);
-        this.send("uci");
-        this.waitFor((l) => l === "uciok").then(resolve);
-        setTimeout(() => reject(new Error("worker timeout")), 4000);
+      // Normal path: the engine in a Worker. Give a cold first load (service worker
+      // installing, files still downloading) plenty of time before giving up on it.
+      const worker = new Worker("pedagog.js");
+      worker.onmessage = (e) => this.onLine(e.data);
+      const ok = await new Promise((resolve) => {
+        worker.onerror = () => resolve(false);
+        this.waitFor((l) => l === "uciok").then(() => resolve(true));
+        worker.postMessage("uci");
+        setTimeout(() => resolve(false), 15000);
       });
+      if (!ok) { worker.terminate(); throw new Error("worker did not answer"); }
+      this.worker = worker;
       this.mode = "worker";
     } catch (e) {
-      // Main-thread fallback: load the script, which exposes globalThis.Pedagog when not in a worker.
+      // Fallback (e.g. file:// in a browser that refuses Workers there): run the engine on the
+      // main thread. The page will pause while the bot thinks.
       this.worker = null;
       await new Promise((resolve, reject) => {
-        const s = document.createElement("script"); s.src = "pedagog.js"; s.onload = resolve; s.onerror = reject;
+        const s = document.createElement("script"); s.src = "pedagog.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load pedagog.js"));
         document.head.appendChild(s);
       });
       globalThis.Pedagog.setOutput((line) => this.onLine(line));
@@ -186,8 +191,10 @@ function refreshClocks() {
   const live = { ...elapsed };
   if (running && !paused && !finished) live[colourToMove()] += performance.now() - tickFrom;
   const bottom = cg.state.orientation, top = bottom === "white" ? "black" : "white";
-  $("clock-top").textContent = fmt(live[top]);
-  $("clock-bottom").textContent = fmt(live[bottom]);
+  // Only touch the DOM when the text changes: a write per tick would force layout during drags.
+  const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
+  setText($("clock-top"), fmt(live[top]));
+  setText($("clock-bottom"), fmt(live[bottom]));
 }
 
 function refreshMoves() {
@@ -324,9 +331,11 @@ function newGame() {
 cg = Chessground($("board"), {
   fen: START_FEN, orientation: "white", coordinates: true,
   animation: { duration: 200 }, highlight: { lastMove: true, check: true },
-  movable: { free: false, color: undefined, dests: new Map(), showDests: true },
+  // `movable.events.after` is chessground's hook for a completed user move (the board state is
+  // already updated when it fires). Chessground defers both hooks with setTimeout, so refreshing
+  // the board from here never fights the drop itself.
+  movable: { free: false, color: undefined, dests: new Map(), showDests: true, events: { after: onUserMove } },
   draggable: { showGhost: true }, premovable: { enabled: false },
-  events: { move: onUserMove },
 });
 game = new Chess({ fen: START_FEN });
 
