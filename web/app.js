@@ -211,16 +211,26 @@ function refreshMoves() {
     for (const j of [i, i + 1]) {
       const span = document.createElement("span");
       span.className = "san" + ((viewPly === null ? history.length : viewPly) === j + 1 ? " current" : "");
-      if (history[j]) { span.textContent = history[j].san; span.onclick = () => { viewPly = j + 1 === history.length ? null : j + 1; refreshAll(); }; }
+      if (history[j]) { span.textContent = history[j].san; span.onclick = () => viewAt(j + 1); }
       li.appendChild(span);
     }
     ol.appendChild(li);
   }
   $("result").textContent = finished ? resultText() : "";
   if (viewPly === null) ol.parentElement.scrollTop = ol.parentElement.scrollHeight;
+  else ol.querySelector(".current")?.scrollIntoView({ block: "nearest" });
   $("opening").textContent = openingName();
   refreshLinks();
 }
+
+/* Show the position after `ply` moves; the last ply (or beyond) is the live game again. */
+function viewAt(ply) {
+  const n = game.history().length;
+  ply = Math.max(0, Math.min(n, ply));
+  viewPly = ply === n ? null : ply;
+  refreshAll();
+}
+const shownPly = () => (viewPly === null ? game.history().length : viewPly);
 
 function resultText() {
   if (game.inCheckmate()) return `Checkmate — ${colourToMove() === "white" ? "Black" : "White"} wins`;
@@ -357,8 +367,20 @@ $("flip").onclick = () => { cg.toggleOrientation(); refreshBars(); };
 $("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; if (!paused) { tickFrom = performance.now(); scheduleBot(); } else refreshBars(); };
 setInterval(refreshClocks, 250);
 
+// Arrow keys step through the played moves, like clicking them; Home/End jump to the start and
+// back to the live game. Keys typed into the form controls (the sliders use arrows) are left alone.
+document.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea") || e.altKey || e.ctrlKey || e.metaKey) return;
+  const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+  if (step) viewAt(shownPly() + step);
+  else if (e.key === "Home") viewAt(0);
+  else if (e.key === "End") viewAt(game.history().length);
+  else return;
+  e.preventDefault();
+});
+
 refreshAll();
 engine.ready.then(() => setStatus(`engine ready (${engine.mode}) — press New game`)).catch((e) => setStatus("engine failed to load: " + e.message));
-globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines };   // for the console and tests
+globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines, viewAt, shownPly };   // for the console and tests
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});

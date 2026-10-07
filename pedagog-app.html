@@ -497,7 +497,8 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
       Pedagog is a single-file pedagogical chess engine. Levels are calibrated against the
       Maia bots and read as Lichess classical ratings: level 2 ≈ 950, level 10 (full
       strength) ≈ 1900; level 1 plays random moves. In standard chess the bots open from a
-      small book of about a hundred lines, a quarter of them offbeat.
+      small book of about a hundred lines, a quarter of them offbeat. Click a move, or use the
+      ← → keys, to step through the game.
       Board by <a href="https://github.com/lichess-org/chessground">chessground</a> (GPL-3),
       rules by <a href="https://github.com/shaack/cm-chess">cm-chess</a> (MIT).
       This is the single-file build: it works from a local file, no server needed.
@@ -6713,10 +6714,7 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
         span.className = "san" + ((viewPly === null ? history.length : viewPly) === j + 1 ? " current" : "");
         if (history[j]) {
           span.textContent = history[j].san;
-          span.onclick = () => {
-            viewPly = j + 1 === history.length ? null : j + 1;
-            refreshAll();
-          };
+          span.onclick = () => viewAt(j + 1);
         }
         li.appendChild(span);
       }
@@ -6725,9 +6723,18 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
     $2("result").textContent = finished ? resultText() : "";
     if (viewPly === null)
       ol.parentElement.scrollTop = ol.parentElement.scrollHeight;
+    else
+      ol.querySelector(".current")?.scrollIntoView({ block: "nearest" });
     $2("opening").textContent = openingName();
     refreshLinks();
   }
+  function viewAt(ply) {
+    const n = game.history().length;
+    ply = Math.max(0, Math.min(n, ply));
+    viewPly = ply === n ? null : ply;
+    refreshAll();
+  }
+  var shownPly = () => viewPly === null ? game.history().length : viewPly;
   function resultText() {
     if (game.inCheckmate())
       return `Checkmate — ${colourToMove() === "white" ? "Black" : "White"} wins`;
@@ -6921,11 +6928,25 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
       refreshBars();
   };
   setInterval(refreshClocks, 250);
+  document.addEventListener("keydown", (e) => {
+    if (e.target.matches("input, select, textarea") || e.altKey || e.ctrlKey || e.metaKey)
+      return;
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (step)
+      viewAt(shownPly() + step);
+    else if (e.key === "Home")
+      viewAt(0);
+    else if (e.key === "End")
+      viewAt(game.history().length);
+    else
+      return;
+    e.preventDefault();
+  });
   refreshAll();
   engine.ready.then(() => setStatus(`engine ready (${engine.mode}) — press New game`)).catch((e) => setStatus("engine failed to load: " + e.message));
   globalThis.pedagogApp = { cg, get game() {
     return game;
-  }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines };
+  }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines, viewAt, shownPly };
   if ("serviceWorker" in navigator && location.protocol.startsWith("http"))
     navigator.serviceWorker.register("sw.js").catch(() => {});
 })();
