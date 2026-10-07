@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "pedagog",
   "version": "1.0.0",
   "description": "A single-file, pedagogical UCI chess engine in JavaScript (Bun or browser)",
@@ -8,6 +8,7 @@
     "bench": "bun pedagog.js bench",
     "perft": "bun pedagog.js perft",
     "web": "bun tools/serve.js",
+    "bundle": "bun tools/bundle.js",
     "match": "bun tools/match.js",
     "elo": "bun tools/elo.js"
   },

@@ -110,11 +110,15 @@ Catalan, ECO-tagged) and 25 offbeat ones (King's Gambit, Englund, Grob, …) —
 picking at random among the lines that still match the game; the engine
 itself has no book. Serve it with `bun run web` (or any static host); a
 service worker caches everything so it keeps working offline and can be
-installed on a phone. Bot time is fixed: levels 1–9 are depth-bounded and
-answer in milliseconds, level 10 thinks for one second. Vendored:
-chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1 (MIT), cm-pgn 5.0.1
-(MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore GPL-3; the engine
-file is independent of it.
+installed on a phone. **`pedagog-app.html`** is the same app built into one
+self-contained file (`bun run bundle`): browsers refuse ES modules and
+Workers from `file://`, so this build inlines everything and starts the
+engine from a Blob URL, which they do allow — double-click it and it runs
+with the engine off the main thread. Bot time is fixed: levels 1–9 are
+depth-bounded and answer in milliseconds, level 10 thinks for one second.
+Vendored: chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1 (MIT),
+cm-pgn 5.0.1 (MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore
+GPL-3; the engine file is independent of it.
 
 ### Tools
 
@@ -146,6 +150,11 @@ Follow-up decisions during Part II:
 > Rescale the Elo ratings based on Maia1900's current classical rating on Lichess
 
 > Make the webapp use an opening book with about 100 openings, mostly based on human openings but with a quarter offbeat openings
+
+> The UI is stuttering when I move pieces. Diagnose and fix pls
+
+> Is there a way to make it run smoothly even when I use file:// ?
+> […] try the Blob worker for Chrome only
 
 ## Part I — How strong it is, and how that was measured
 
@@ -226,7 +235,8 @@ and PeSTO only if the engine turned out too weak, and it did not.
 
 - `pedagog.js` — the engine, one file, read top to bottom.
 - `index.html`, `web/`, `sw.js` — the web app (Part II); `bun run web` serves it.
-- `tools/` — match runner, Elo fit, blunder judge, plot, server.
+- `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
+- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler.
 - `docs/` — `skill-curve.png`, `skill-curve.json`, `blunders.json`.
 - `package.json` — `bun start`, `bun run bench`, `bun run perft`, `bun run web`.
 

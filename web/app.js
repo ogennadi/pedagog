@@ -21,9 +21,12 @@ class Engine {
   }
   async start() {
     try {
-      // Normal path: the engine in a Worker. Give a cold first load (service worker
-      // installing, files still downloading) plenty of time before giving up on it.
-      const worker = new Worker("pedagog.js");
+      // Normal path: the engine in a Worker. The single-file build embeds the engine source and
+      // starts it from a Blob URL, which browsers allow even from file:// (a file:// Worker is
+      // refused). Give a cold first load (service worker installing, files still downloading)
+      // plenty of time before giving up on it.
+      const source = globalThis.PEDAGOG_ENGINE_SOURCE;
+      const worker = new Worker(source ? URL.createObjectURL(new Blob([source], { type: "text/javascript" })) : "pedagog.js");
       worker.onmessage = (e) => this.onLine(e.data);
       const ok = await new Promise((resolve) => {
         worker.onerror = () => resolve(false);
@@ -35,11 +38,12 @@ class Engine {
       this.worker = worker;
       this.mode = "worker";
     } catch (e) {
-      // Fallback (e.g. file:// in a browser that refuses Workers there): run the engine on the
-      // main thread. The page will pause while the bot thinks.
+      // Fallback: run the engine on the main thread. The page will pause while the bot thinks.
       this.worker = null;
       await new Promise((resolve, reject) => {
-        const s = document.createElement("script"); s.src = "pedagog.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load pedagog.js"));
+        const s = document.createElement("script");
+        if (globalThis.PEDAGOG_ENGINE_SOURCE) { s.textContent = globalThis.PEDAGOG_ENGINE_SOURCE; document.head.appendChild(s); resolve(); return; }
+        s.src = "pedagog.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load pedagog.js"));
         document.head.appendChild(s);
       });
       globalThis.Pedagog.setOutput((line) => this.onLine(line));
