@@ -35,9 +35,11 @@ main { display: grid; grid-template-columns: 1fr; gap: .75rem; padding: 0 .5rem 
 .captured piece:last-of-type { margin-right: 0; }
 .captured .diff { margin-left: .5rem; color: var(--muted); font-size: .85rem; white-space: nowrap; }
 
-.promotion { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; gap: .4rem; padding: .5rem; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 5; }
-.promotion button { width: 64px; height: 64px; padding: 0; background: #ddd; border: 0; border-radius: .4rem; }
-.promotion piece { display: block; width: 100%; height: 100%; background-size: contain; background-repeat: no-repeat; background-position: center; }
+/* The promotion chooser also carries the cg-wrap class, because chessground's piece sprites are
+   only defined under it; the rules below undo cg-wrap's board layout for this box. */
+.promotion.cg-wrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; gap: .4rem; padding: .5rem; width: auto; height: auto; background: var(--panel); border: 1px solid var(--border); border-radius: .5rem; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 5; }
+.promotion button { width: 64px; height: 64px; padding: 0; background: #ddd; border: 0; border-radius: .4rem; position: relative; }
+.promotion.cg-wrap piece { position: static; display: block; width: 100%; height: 100%; background-size: contain; background-repeat: no-repeat; background-position: center; pointer-events: none; }
 .hidden { display: none !important; }
 
 .side-column { display: flex; flex-direction: column; gap: .75rem; }
