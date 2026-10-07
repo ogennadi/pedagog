@@ -29,11 +29,11 @@ const tag = (opt("--tag", `${a}-vs-${b}`)).replace(/[:,]/g, "_");
 if (!a || !b) { console.error("usage: bun tools/match.js <A> <B> <games> [--concurrency N] [--tag name]"); process.exit(1); }
 
 function playerArgs(spec) {
-  const m = /^L(\d+)$/.exec(spec);
+  const m = /^L(\d+)(?:@(\d+))?$/.exec(spec);     // L7, or L10@6 for a fixed search depth and no clock
   if (m) {
-    const level = parseInt(m[1]);
-    const tc = level >= SKILL_MAX ? "tc=10+0.1" : "tc=inf";
-    return ["-engine", `name=${spec}`, "cmd=bun", `arg=${engine}`, "proto=uci", tc, `option.Skill_Level=${level}`];
+    const level = parseInt(m[1]), depth = m[2] ? parseInt(m[2]) : 0;
+    const tc = level >= SKILL_MAX && !depth ? "tc=10+0.1" : "tc=inf";
+    return ["-engine", `name=${spec}`, "cmd=bun", `arg=${engine}`, "proto=uci", tc, `option.Skill_Level=${level}`, ...(depth ? [`depth=${depth}`] : [])];
   }
   if (/^maia-\d+$/.test(spec)) {
     return ["-engine", `name=${spec}`, `cmd=${lc0}`, `arg=--weights=${maiaDir}\\${spec}.pb.gz`, "arg=--backend=blas",
