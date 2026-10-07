@@ -16,18 +16,24 @@
 
    It is deliberately a base engine: iterative deepening, alpha-beta
    and captures-first move ordering, with a plain piece-square
-   evaluation, and nothing else. Measured against Maia-1900 it is
-   about 140 Elo stronger than that network, which puts its full
-   strength around 1900 on the Lichess classical scale. Below full
-   strength, Skill_Level weakens it the way Gaia does: it looks less
-   far ahead, misjudges some positions on purpose, and overlooks some
-   moves entirely (see COLOPHON.md for the measured ladder).
+   evaluation, and nothing else. It is written as seven cumulative
+   CHAPTERS (random mover, greedy, minimax, alpha-beta, iterative
+   deepening, move ordering, piece-square tables): each idea is one
+   guarded block, the last chapter is the whole engine, and any
+   earlier chapter can be switched on to see -- and measure -- the
+   engine as it was before an idea arrived. Measured against
+   Maia-1900 the last chapter is about 140 Elo stronger than that
+   network, which puts its full strength around 1900 on the Lichess
+   classical scale. Below full strength, Skill_Level weakens it the
+   way Gaia does: it looks less far ahead, misjudges some positions
+   on purpose, and overlooks some moves entirely (see COLOPHON.md
+   for the measured ladder).
 ================================================================
 
    TABLE OF CONTENTS
    -----------------
    S0  Constants           Pieces, squares, move encoding
-   S1  Search              Iterative deepening, alpha-beta, move ordering
+   S1  Search              The chapters; iterative deepening, alpha-beta, ordering
    S2  Skill Levels        Depth ceiling, blunders, vision
    S3  Evaluation          A naive piece-square evaluation
    S4  Board               0x88 board, make/unmake, draws, FEN, notation
@@ -113,11 +119,20 @@ const now = () => performance.now();
    captures first, and asks the static evaluation about the
    positions at the leaves. That is the whole search: there is no
    quiescence search, no hash table and no pruning beyond alpha-beta
-   itself. Each of those is a chapter for later, and COLOPHON.md
-   records what each one measured to be worth. (The missing
-   quiescence search shows: a leaf in the middle of an exchange is
-   judged as if the exchange were over, the "horizon effect", and
-   the score swings between odd and even depths.)
+   itself. (The missing quiescence search shows: a leaf in the middle
+   of an exchange is judged as if the exchange were over, the
+   "horizon effect", and the score swings between odd and even
+   depths.)
+
+   The engine was not written in one go, and it is not meant to be
+   read in one go either. It grew in CHAPTERS, each adding one idea,
+   and the ideas are still visible as such: every one of them is a
+   single block guarded by `chapter >= CHAPTER.<name>`. At the last
+   chapter every guard is true and nothing is skipped -- this is the
+   full engine with no dead code. Set `Chapter` lower (a UCI option,
+   or `tools/chapter.js` to write out that chapter's engine as a file
+   of its own) and you have the engine as it was before that idea,
+   which is how the worth of each one was measured.
 
    think()     iterative deepening: depth 1, 2, 3, ... until time
                runs out. We always have a complete answer from the
@@ -134,12 +149,28 @@ const now = () => performance.now();
    one side is bad for the other.
 */
 
+/* The chapters, in the order they were written. Each is cumulative:
+   chapter 4 is chapters 1 to 4. The ratings are on the Lichess
+   classical scale, measured against the chapter before and against
+   Maia (COLOPHON.md has the games). */
+const CHAPTER = {
+  RANDOM: 1,         // a legal move at random (mating in one when it can)                      ~400
+  GREEDY: 2,         // one ply ahead, counting material: take what you can                     ~420  wins material, cannot mate
+  MINIMAX: 3,        // look FIXED_DEPTH plies ahead, every line to the end                     1186  200-0 against greedy
+  ALPHA_BETA: 4,     // stop looking at a move once it is refuted: same answer, far fewer nodes 1177  same moves; speed is the point
+  ITERATIVE: 5,      // depth 1, 2, 3, ... until the clock says stop: the first that plays timed games  1618  the speed cashed in
+  ORDERING: 6,       // try captures first, so refutations come early                           1790
+  PIECE_SQUARES: 7,  // judge where the pieces stand, not only how many there are              1906
+};
+const LAST_CHAPTER = CHAPTER.PIECE_SQUARES;
+const FIXED_DEPTH = 3;      // how far chapters 3 and 4 look, having no clock sense yet
+let chapter = LAST_CHAPTER;
+
 let nodes = 0, stopped = false, rootDepth = 0;
 let startTime = 0, timeSoft = 0, timeHard = 0, nodeLimit = 0, depthLimit = MAX_PLY;
 let stopFlag = null;        // Int32Array over a SharedArrayBuffer, set to 1 by "stop"
 
 const moveStack = new Int32Array((MAX_PLY + 2) * MAX_MOVES);   // one slice of moves per ply
-const captureStack = new Int8Array((MAX_PLY + 2) * MAX_MOVES); // 1 if the move at that index captures
 const pvTable = new Int32Array(MAX_PLY * MAX_PLY);             // triangular PV table
 const pvLength = new Int32Array(MAX_PLY);
 const rootSkipped = [];                                        // root moves not to search (MultiPV, vision)
@@ -153,16 +184,20 @@ let multiPV = 1;
    what we play; an interrupted iteration is discarded. */
 function think() {
   startTime = now(); nodes = 0; stopped = false; rootDepth = 0;
-  if (skillLevel === 1) { playRandomly(); return; }
+  if (skillLevel === 1 || chapter === CHAPTER.RANDOM) { playRandomly(); return; }
 
   const rootMoves = legalMoves();
   if (rootMoves.length === 0) { out("bestmove 0000"); return; }
   const unseen = overlookedRootMoves(rootMoves);
   const lines = Math.min(multiPV, rootMoves.length - unseen.length);
-  const maxDepth = Math.min(depthLimit, skillDepth());
+
+  // Before iterative deepening the search goes straight to one depth: one ply for the greedy
+  // chapter, FIXED_DEPTH after that. It cannot tell the time, so it may overstep a clock.
+  let maxDepth = Math.min(depthLimit, skillDepth()), depth = 1;
+  if (chapter < CHAPTER.ITERATIVE) depth = maxDepth = Math.min(maxDepth, chapter < CHAPTER.MINIMAX ? 1 : FIXED_DEPTH);
 
   let bestMove = rootMoves.find((m) => !unseen.includes(m)), ponderMove = 0;
-  for (let depth = 1; depth <= maxDepth; depth++) {
+  for (; depth <= maxDepth; depth++) {
     rootDepth = depth;
     rootSkipped.length = 0; rootSkipped.push(...unseen);
     for (let line = 0; line < lines; line++) {
@@ -177,7 +212,7 @@ function think() {
   out("bestmove " + moveToUci(bestMove) + (ponderMove ? " ponder " + moveToUci(ponderMove) : ""));
 }
 
-/* Negamax alpha-beta to a fixed depth. */
+/* Negamax to a fixed depth; alpha-beta is the single `break` below. */
 function search(alpha, beta, depth, ply) {
   pvLength[ply] = ply;
   nodes++;
@@ -187,11 +222,10 @@ function search(alpha, beta, depth, ply) {
   if (depth === 0 || ply >= MAX_PLY - 1) return evaluate();   // a leaf: ask the evaluation
 
   const first = ply * MAX_MOVES, last = generateMoves(first);
-  markCaptures(first, last);
+  if (chapter >= CHAPTER.ORDERING) orderMoves(first, last);
 
   let bestScore = -INF, legal = 0, searched = 0;
   for (let i = first; i < last; i++) {
-    pickMove(i, last);
     const m = moveStack[i];
     if (ply === 0 && rootSkipped.includes(m)) continue;
     if (!makeMove(m)) continue;                  // leaves our king in check
@@ -207,7 +241,9 @@ function search(alpha, beta, depth, ply) {
       if (score > alpha) {
         alpha = score;
         updatePV(ply, m);
-        if (alpha >= beta) break;                // cutoff: too good to be allowed
+        // The cutoff. Without it the loop visits every move and this is plain minimax;
+        // with it, a move the opponent would never allow ends the loop early.
+        if (chapter >= CHAPTER.ALPHA_BETA && alpha >= beta) break;
       }
     }
   }
@@ -220,24 +256,15 @@ function search(alpha, beta, depth, ply) {
 /* ---- Move ordering --------------------------------------------
    Alpha-beta prunes most when a good move is tried first, and the
    simplest guess at a good move is a capture. So: captures (and
-   promotions) first, in the order they were generated, then the
-   quiet moves. Ranking the captures themselves (most valuable
+   promotions) first, then the quiet moves, each group in the order
+   it was generated. Ranking the captures themselves (most valuable
    victim first, MVV-LVA) is the next refinement; see COLOPHON.md. */
-function markCaptures(first, last) {
+function orderMoves(first, last) {
+  let k = first;                                 // everything before k is a capture
   for (let i = first; i < last; i++) {
     const m = moveStack[i];
-    captureStack[i] = board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m) ? 1 : 0;
-  }
-}
-
-/* Bring the first remaining capture (if any) to position i. */
-function pickMove(i, last) {
-  if (captureStack[i]) return;
-  for (let j = i + 1; j < last; j++) {
-    if (captureStack[j]) {
-      const t = moveStack[i]; moveStack[i] = moveStack[j]; moveStack[j] = t;
-      captureStack[j] = 0; captureStack[i] = 1;
-      return;
+    if (board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m)) {
+      const t = moveStack[k]; moveStack[k] = m; moveStack[i] = t; k++;
     }
   }
 }
@@ -445,16 +472,19 @@ function mix32(x) {
    rooks like the seventh rank, the king hides in the middlegame
    and comes out in the endgame.
 
-   evaluate() simply walks the board and adds up the tables. (Real
-   engines keep these sums up to date in make/unmake instead, which
-   is faster but spreads the evaluation over three functions.) The
-   skill level's occasional blunder is added at the end.
+   evaluate() simply walks the board and adds up material and
+   placement. (Real engines keep these sums up to date in make/unmake
+   instead, which is faster but spreads the evaluation over three
+   functions.) Until the PIECE_SQUARES chapter it is material alone:
+   the greedy engine of chapter 2 knows a queen from a pawn and
+   nothing else. The skill level's occasional blunder is added at
+   the end.
 */
 
 const MG_VALUE = [0, 100, 320, 330, 500, 900, 0];
 const EG_VALUE = [0, 120, 320, 330, 520, 920, 0];
 const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];    // 24 at the start, 0 when only kings and pawns remain
-const pstMg = new Int16Array(16 * 128), pstEg = new Int16Array(16 * 128);   // material + placement, signed by colour
+const placeMg = new Int16Array(16 * 128), placeEg = new Int16Array(16 * 128);   // placement bonuses, signed by colour
 
 /* Bonus for a white piece of `type` on file f, rank r (0 = rank 1). */
 function squareBonus(type, f, r) {
@@ -475,10 +505,8 @@ function initEvaluation() {
     for (let s = 0; s < 128; s++) {
       if (s & 0x88) continue;
       const [mg, eg] = squareBonus(type, s & 7, s >> 4);
-      pstMg[type * 128 + s] = MG_VALUE[type] + mg;                  // white: as is
-      pstEg[type * 128 + s] = EG_VALUE[type] + eg;
-      pstMg[(type | 8) * 128 + (s ^ 0x70)] = -(MG_VALUE[type] + mg); // black: mirrored and negated
-      pstEg[(type | 8) * 128 + (s ^ 0x70)] = -(EG_VALUE[type] + eg);
+      placeMg[type * 128 + s] = mg; placeEg[type * 128 + s] = eg;                          // white: as is
+      placeMg[(type | 8) * 128 + (s ^ 0x70)] = -mg; placeEg[(type | 8) * 128 + (s ^ 0x70)] = -eg;   // black: mirrored and negated
     }
   }
 }
@@ -489,10 +517,17 @@ function evaluate() {
     if (s & 0x88) { s += 7; continue; }
     const p = board[s];
     if (p === EMPTY) continue;
-    mg += pstMg[p * 128 + s]; eg += pstEg[p * 128 + s]; phase += PHASE_INC[p & 7];
+    const type = p & 7, sign = p < 8 ? 1 : -1;
+    mg += sign * MG_VALUE[type]; eg += sign * EG_VALUE[type]; phase += PHASE_INC[type];
+    if (chapter >= CHAPTER.PIECE_SQUARES) { mg += placeMg[p * 128 + s]; eg += placeEg[p * 128 + s]; }
   }
-  if (phase > 24) phase = 24;
-  const score = ((mg * phase + eg * (24 - phase)) / 24) | 0;   // taper: all mg at the start, all eg at the end
+  let score = mg;
+  if (chapter >= CHAPTER.PIECE_SQUARES) {
+    // Taper between the two tables: all middlegame at the start, all endgame when only kings
+    // and pawns remain, so that the king can hide first and come out later.
+    if (phase > 24) phase = 24;
+    score = ((mg * phase + eg * (24 - phase)) / 24) | 0;
+  }
   return (side === WHITE ? score : -score) + blunder();
 }
 
@@ -891,6 +926,7 @@ function uciCommand(line) {
       out("option name UCI_Chess960 type check default false");          // castling notation: king-takes-rook
       out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`); // 1 = random mover, SKILL_MAX = full strength
       out("option name Skill_Seed type spin default 0 min 0 max 2147483647"); // which deterministic opponent; 0 = built-in
+      out(`option name Chapter type spin default ${LAST_CHAPTER} min 1 max ${LAST_CHAPTER}`); // the engine as of that chapter (see S1)
       out("uciok");
       break;
     case "setoption": {
@@ -901,6 +937,7 @@ function uciCommand(line) {
       else if (name === "uci_chess960") chess960 = value.toLowerCase() === "true";
       else if (name === "skill_level") setSkillLevel(parseInt(value) || SKILL_MAX);
       else if (name === "skill_seed") setSkillSeed(parseInt(value) || 0);
+      else if (name === "chapter") chapter = Math.min(LAST_CHAPTER, Math.max(1, parseInt(value) || LAST_CHAPTER));
       // "hash" and "threads" are accepted and ignored
       break;
     }
@@ -980,8 +1017,8 @@ const BENCH_FENS = [
 ];
 
 function bench(depth) {
-  const savedOut = out, savedLevel = skillLevel;
-  setSkillLevel(SKILL_MAX);
+  const savedOut = out, savedLevel = skillLevel, savedChapter = chapter;
+  setSkillLevel(SKILL_MAX); chapter = LAST_CHAPTER;
   let totalNodes = 0, totalMs = 0;
   for (const fen of BENCH_FENS) {
     setPosition(fen);
@@ -994,7 +1031,7 @@ function bench(depth) {
     totalNodes += nodes;
     out(`info string ${nodes} nodes  ${fen}`);
   }
-  setSkillLevel(savedLevel);
+  setSkillLevel(savedLevel); chapter = savedChapter;
   out(`${totalNodes} nodes ${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`);
 }
 

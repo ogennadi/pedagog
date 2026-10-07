@@ -1,0 +1,66 @@
+{
+  "anchor": {
+    "maia-1900": 1755
+  },
+  "anchor_note": "its Lichess classical rating on 2026-10-06",
+  "ratings": [
+    {
+      "player": "C1",
+      "elo": 399,
+      "lo": 319,
+      "hi": 489,
+      "games": 200
+    },
+    {
+      "player": "C2",
+      "elo": 420,
+      "lo": 338,
+      "hi": 509,
+      "games": 400
+    },
+    {
+      "player": "C3",
+      "elo": 1186,
+      "lo": 1095,
+      "hi": 1277,
+      "games": 400
+    },
+    {
+      "player": "C4",
+      "elo": 1177,
+      "lo": 1103,
+      "hi": 1248,
+      "games": 400
+    },
+    {
+      "player": "C5",
+      "elo": 1618,
+      "lo": 1583,
+      "hi": 1657,
+      "games": 600
+    },
+    {
+      "player": "C6",
+      "elo": 1790,
+      "lo": 1761,
+      "hi": 1826,
+      "games": 600
+    },
+    {
+      "player": "C7",
+      "elo": 1906,
+      "lo": 1870,
+      "hi": 1943,
+      "games": 400
+    },
+    {
+      "player": "maia-1900",
+      "elo": 1755,
+      "lo": 1755,
+      "hi": 1755,
+      "games": 600
+    }
+  ],
+  "gaps": [],
+  "games": 1800
+}

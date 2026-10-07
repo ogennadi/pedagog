@@ -18,6 +18,38 @@ half a million tokens in all.
 
 ## Part II — Skill levels
 
+### The chapters: how the engine is organised
+
+`pedagog.js` is written as seven cumulative **chapters**, each adding one
+idea, and the ideas stay visible as such: every one after the first is a
+single block guarded by `chapter >= CHAPTER.<name>`. At the last chapter
+every guard is true, so this is the full engine with no dead code; set the
+`Chapter` UCI option lower and you have the engine as it was before that
+idea — which is how the ideas were measured. `bun run chapter 4 >
+pedagog-ch4.js` writes out chapter 4 as a complete engine of its own, with
+no mention of what comes later (`tools/chapter.js` resolves the guards
+textually; the generated chapter 7 reproduces the full engine's bench node
+count exactly, 1,310,439).
+
+Measured with 200 games per pairing, each chapter against the one before and
+chapters 5–7 against Maia-1900, on the Lichess classical scale
+(`docs/chapters.json`):
+
+| chapter | idea | rating | against the chapter before |
+|---|---|---|---|
+| 1 | random legal move | ~400 | — |
+| 2 | greedy: one ply, counting material | ~420 | 14-0-186 — it wins all the material and then cannot deliver mate, because at one ply it never sees the reply that would tell it the king is mated |
+| 3 | minimax to depth 3 | 1186 | 200-0-0 |
+| 4 | alpha-beta | 1177 | 98-98-4 — it plays the *same moves* as minimax (the test that proves the cutoff correct); its speed is worth nothing until there is a clock |
+| 5 | iterative deepening on the clock | 1618 | +486 — the speed cashed in: depth 5–6 instead of 3 at 10+0.1 |
+| 6 | captures first | 1790 | +238 |
+| 7 | piece-square tables (and the taper) | 1906 | +149; matches level 10's 1894 from the skill ladder |
+
+Chapters 1–4 have no clock sense and are played at a fixed depth; the
+ratings of chapters 1–2 are only loosely tied to the scale (their games
+against chapter 3 were a whitewash). The skill ladder below sits on top of
+the last chapter.
+
 ### What a level is
 
 Below full strength the engine is weakened the way Gaia does it, with the
@@ -122,10 +154,13 @@ GPL-3; the engine file is independent of it.
 
 ### Tools
 
-`tools/match.js` (cutechess wrapper: `bun run match L7 maia-1500 300`),
+`tools/match.js` (cutechess wrapper: `bun run match L7 maia-1500 300`;
+also `C4` for a chapter and `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
 `tools/plot.py` (the figure), `tools/serve.js` (static server with the
-cross-origin-isolation headers). Match PGNs land in `tools/out/` (ignored).
+cross-origin-isolation headers), `tools/bundle.js` (the single-file app),
+`tools/chapter.js` (a chapter's engine as its own file). Match PGNs land in
+`tools/out/` (ignored).
 
 ### The Part II brief
 
@@ -155,6 +190,10 @@ Follow-up decisions during Part II:
 
 > Is there a way to make it run smoothly even when I use file:// ?
 > […] try the Blob worker for Chrome only
+
+> How would you write a single-file engine so that the ladder structure is apparent and yet there's no dead code AND the engine performs at the strength of the sum of all the optimizations in the ladder?
+>
+> Please try that but use another term instead of Rung (to avoid confusion with skill rungs)
 
 ## Part I — How strong it is, and how that was measured
 

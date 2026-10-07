@@ -9,6 +9,7 @@
     "perft": "bun pedagog.js perft",
     "web": "bun tools/serve.js",
     "bundle": "bun tools/bundle.js",
+    "chapter": "bun tools/chapter.js",
     "match": "bun tools/match.js",
     "elo": "bun tools/elo.js"
   },
