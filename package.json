@@ -10,6 +10,7 @@
     "web": "bun tools/serve.js",
     "bundle": "bun tools/bundle.js",
     "chapter": "bun tools/chapter.js",
+    "chapters": "bun tools/chapter.js all",
     "match": "bun tools/match.js",
     "elo": "bun tools/elo.js"
   },

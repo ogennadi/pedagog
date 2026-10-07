@@ -275,7 +275,8 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `pedagog.js` — the engine, one file, read top to bottom.
 - `index.html`, `web/`, `sw.js` — the web app (Part II); `bun run web` serves it.
 - `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
-- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler.
+- `chapters/` — the engine as it was at the end of each of the seven chapters (`bun run chapters` regenerates them).
+- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler, chapter extractor.
 - `docs/` — `skill-curve.png`, `skill-curve.json`, `blunders.json`.
 - `package.json` — `bun start`, `bun run bench`, `bun run perft`, `bun run web`.
 
