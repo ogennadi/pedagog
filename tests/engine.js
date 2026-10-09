@@ -23,6 +23,7 @@ export function engine(path = resolve(import.meta.dir, "..", "pedagog.js")) {
 
 export function stableOutput(output) {
   return output.map((line) => line
+    .replace(/ ponder \S+$/, "")
     .replace(/ nps \d+ time \d+/, "")
     .replace(/ time \d+ nps \d+/, "")
     .replace(/ nodes \d+ nps$/, " nodes"));

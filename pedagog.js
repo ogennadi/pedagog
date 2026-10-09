@@ -10,9 +10,10 @@
    Runs in Bun (`bun pedagog.js`) or in a browser Web Worker
    (`new Worker("pedagog.js")`, post UCI strings, receive lines).
 
-   Supports standard chess and Chess960 (UCI_Chess960), MultiPV,
+   Supports standard chess and Chess960 (UCI_Chess960),
    a deterministic Skill_Seed (as in Gaia), and the Hash/Threads
-   options OpenBench expects. The search is always single-threaded.
+   options OpenBench expects. Search uses one thread; a separate
+   main thread handles input and interruption, not parallel search.
 
    It is deliberately a base engine: iterative deepening, alpha-beta
    and captures-first move ordering, with a plain piece-square
@@ -34,7 +35,6 @@
    S4  Chess Rules         Position, make/unmake, draws, moves, attacks
    S5  Zobrist Hashing     Position keys for repetition detection
    S6  UCI                 Options (next to "uciok"), bench, perft, I/O
-   COLOPHON                See COLOPHON.md
 ================================================================
 */
 
@@ -80,7 +80,8 @@
 const NAME = "Pedagog", VERSION = "1.0";
 
 const WHITE = 0, BLACK = 1;
-const EMPTY = 0, PAWN = 1, KNIGHT = 2, BISHOP = 3, ROOK = 4, QUEEN = 5, KING = 6;
+const EMPTY = 0, PAWN = 1, KNIGHT = 2, BISHOP = 3;
+const ROOK = 4, QUEEN = 5, KING = 6;
 const PIECE_CHARS = ".PNBRQK..pnbrqk";
 
 const MAX_PLY = 100;              // longest line the search will follow
@@ -96,10 +97,12 @@ const moveFrom = (m) => m & 127;
 const moveTo = (m) => (m >> 7) & 127;
 const movePromo = (m) => (m >> 14) & 7;
 const moveFlag = (m) => (m >> 17) & 3;
-const encodeMove = (from, to, promo, flag) => from | (to << 7) | (promo << 14) | (flag << 17);
+const encodeMove = (from, to, promo, flag) =>
+  from | (to << 7) | (promo << 14) | (flag << 17);
 
 const squareName = (s) => "abcdefgh"[s & 7] + ((s >> 4) + 1);
-const parseSquare = (str) => (str.charCodeAt(1) - 49) * 16 + (str.charCodeAt(0) - 97);
+const parseSquare = (str) =>
+  (str.charCodeAt(1) - 49) * 16 + (str.charCodeAt(0) - 97);
 
 const now = () => performance.now();
 
@@ -133,21 +136,19 @@ const now = () => performance.now();
 */
 
 let nodes = 0, stopped = false, rootDepth = 0;
-let startTime = 0, timeSoft = 0, timeHard = 0, nodeLimit = 0, depthLimit = MAX_PLY;
-let stopFlag = null;        // Int32Array over a SharedArrayBuffer, set to 1 by "stop"
+let startTime = 0, timeSoft = 0, timeHard = 0, nodeLimit = 0;
+let depthLimit = MAX_PLY;
+let stopFlag = null; // Atomics shares stop requests with the input thread.
 
-const moveStack = new Int32Array((MAX_PLY + 2) * MAX_MOVES);   // one slice of moves per ply
-const pvTable = new Int32Array(MAX_PLY * MAX_PLY);             // triangular PV table
+// One slice of moves per ply.
+const moveStack = new Int32Array((MAX_PLY + 2) * MAX_MOVES);
+
+const pvTable = new Int32Array(MAX_PLY * MAX_PLY); // triangular PV table
 const pvLength = new Int32Array(MAX_PLY);
-const rootSkipped = [];                                        // root moves not to search (MultiPV, vision)
+const rootSkipped = []; // root moves overlooked by skill vision
 
-let multiPV = 1;
-
-/* Iterative deepening with MultiPV. For each depth, the first line
-   is a normal search; the k-th line is the same search with the
-   k-1 better moves excluded at the root, so each line is the best
-   of what remains. We keep the best move of the last completed
-   first-line search; an interrupted line cannot replace it. */
+/* Search one best line at increasing depths. Keep the best move from
+   the last completed depth; an interrupted search cannot replace it. */
 function think() {
   startTime = now();
   nodes = 0;
@@ -164,28 +165,20 @@ function think() {
     return;
   }
   const unseen = overlookedRootMoves(rootMoves);
-  const lineCount = Math.min(multiPV, rootMoves.length - unseen.length);
   const maxDepth = Math.min(depthLimit, skillDepth());
+  rootSkipped.length = 0;
+  rootSkipped.push(...unseen);
 
   let bestMove = rootMoves.find((move) => !unseen.includes(move));
-  let ponderMove = 0;
   for (let depth = 1; depth <= maxDepth; depth++) {
     rootDepth = depth;
-    rootSkipped.length = 0;
-    rootSkipped.push(...unseen);
-    for (let line = 0; line < lineCount; line++) {
-      const score = search(-INF, INF, depth, 0);
-      if (stopped) break;
-      rootSkipped.push(pvTable[0]);
-      if (line === 0) {
-        bestMove = pvTable[0];
-        ponderMove = pvLength[0] > 1 ? pvTable[1] : 0;
-      }
-      report(depth, line, score);
-    }
-    if (stopped || now() - startTime > timeSoft) break;
+    const score = search(-INF, INF, depth, 0);
+    if (stopped) break;
+    bestMove = pvTable[0];
+    report(depth, score);
+    if (now() - startTime > timeSoft) break;
   }
-  out("bestmove " + moveToUci(bestMove) + (ponderMove ? " ponder " + moveToUci(ponderMove) : ""));
+  out("bestmove " + moveToUci(bestMove));
 }
 
 /* Negamax to a fixed depth: terminate, try moves, keep the best line,
@@ -197,7 +190,8 @@ function search(alpha, beta, depth, ply) {
   if ((nodes & 1023) === 0) checkLimits();
   if (stopped) return 0;
   if (ply > 0 && isDraw()) return DRAW;
-  if (depth === 0 || ply >= MAX_PLY - 1) return evaluate();   // a leaf: ask the evaluation
+  if (depth === 0 || ply >= MAX_PLY - 1)
+    return evaluate(); // a leaf: ask the evaluation
 
   const first = ply * MAX_MOVES;
   const last = generateMoves(first);
@@ -224,12 +218,13 @@ function search(alpha, beta, depth, ply) {
       if (score > alpha) {
         alpha = score;
         updatePV(ply, move);
-        if (alpha >= beta) break;               // opponent would never allow this line
+        if (alpha >= beta) break; // opponent would never allow this line
       }
     }
   }
 
-  if (legalMoveCount === 0) return isAttacked(kingSq[side], side ^ 1) ? -MATE + ply : DRAW;
+  if (legalMoveCount === 0)
+    return isAttacked(kingSq[side], side ^ 1) ? -MATE + ply : DRAW;
   if (searchedMoveCount === 0) return evaluate(); // overlooked every legal move
   return bestScore;
 }
@@ -241,7 +236,7 @@ function search(alpha, beta, depth, ply) {
    it was generated. Ranking the captures themselves (most valuable
    victim first, MVV-LVA) is the next refinement; see COLOPHON.md. */
 function orderMoves(first, last) {
-  let k = first;                                 // everything before k is a capture
+  let k = first; // everything before k is a capture
   for (let i = first; i < last; i++) {
     const m = moveStack[i];
     if (board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m)) {
@@ -254,7 +249,8 @@ function orderMoves(first, last) {
    the principal variation of the child that move leads to. */
 function updatePV(ply, m) {
   pvTable[ply * MAX_PLY + ply] = m;
-  for (let i = ply + 1; i < pvLength[ply + 1]; i++) pvTable[ply * MAX_PLY + i] = pvTable[(ply + 1) * MAX_PLY + i];
+  for (let i = ply + 1; i < pvLength[ply + 1]; i++)
+    pvTable[ply * MAX_PLY + i] = pvTable[(ply + 1) * MAX_PLY + i];
   pvLength[ply] = pvLength[ply + 1];
 }
 
@@ -273,7 +269,8 @@ function setLimits(go) {
   if (go.movetime) {
     timeSoft = timeHard = Math.max(1, go.movetime - overhead);
   } else {
-    const time = side === WHITE ? go.wtime : go.btime, inc = (side === WHITE ? go.winc : go.binc) || 0;
+    const time = side === WHITE ? go.wtime : go.btime;
+    const inc = (side === WHITE ? go.winc : go.binc) || 0;
     if (time !== undefined) {
       const movesToGo = go.movestogo || 30;
       timeSoft = Math.max(1, time / movesToGo + 0.75 * inc - overhead);
@@ -289,7 +286,7 @@ function checkLimits() {
   if (stopFlag !== null && Atomics.load(stopFlag, 0) !== 0) stopped = true;
 }
 
-function report(depth, line, score) {
+function report(depth, score) {
   const elapsed = now() - startTime;
   const nps = elapsed > 0 ? Math.round(nodes * 1000 / elapsed) : 0;
   const scoreText = Math.abs(score) >= MATE_IN_MAX
@@ -297,7 +294,10 @@ function report(depth, line, score) {
     : "cp " + score;
   let pv = "";
   for (let i = 0; i < pvLength[0]; i++) pv += " " + moveToUci(pvTable[i]);
-  out(`info depth ${depth} multipv ${line + 1} score ${scoreText} nodes ${nodes} nps ${nps} time ${Math.round(elapsed)} pv${pv}`);
+  out(
+    `info depth ${depth} multipv 1 score ${scoreText} nodes ${nodes} ` +
+    `nps ${nps} time ${Math.round(elapsed)} pv${pv}`
+  );
 }
 
 /* ================================================================
@@ -341,7 +341,8 @@ function report(depth, line, score) {
 
 const SKILL_MAX = 10;
 const FULL_VISION = 1024;
-const VISION_SLOPE = 16, VISION_FLOOR = 160;   // vision lost per ply, and its minimum
+const VISION_SLOPE = 16, VISION_FLOOR = 160;
+// Vision lost per ply, and its minimum.
 
 const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
   ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
@@ -361,7 +362,7 @@ const LADDER = [
   rung(3,     650,     300,     15,    1000),    //  7                 1553
   rung(4,      50,       0,      0,    FULL_VISION),   //  8           1656
   rung(4,     600,       0,      0,    FULL_VISION),   //  9           1789
-  rung(MAX_PLY, 0,       0,      0,    FULL_VISION),   // 10  full strength  1894
+  rung(MAX_PLY, 0,       0,      0,    FULL_VISION), // 10 full strength 1894
 ];
 
 let skillLevel = SKILL_MAX, skill = LADDER[SKILL_MAX - 1];
@@ -406,7 +407,8 @@ function seesMove(m, ply) {
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
   const h = mix32(keyLo ^ Math.imul(m, 0x9E3779B9) ^ seedKey);
   if (((h >>> 20) & 1023) < chance) return true;
-  const easy = histCaptured[hply - 1] !== EMPTY || moveFlag(m) === FLAG_EP || isAttacked(kingSq[side], side ^ 1);
+  const easy = histCaptured[hply - 1] !== EMPTY ||
+    moveFlag(m) === FLAG_EP || isAttacked(kingSq[side], side ^ 1);
   return easy && ((h >>> 8) & 1023) < chance;
 }
 
@@ -415,7 +417,11 @@ function seesMove(m, ply) {
 function overlookedRootMoves(rootMoves) {
   if (skill.vision >= FULL_VISION) return [];
   const unseen = [];
-  for (const m of rootMoves) { makeMove(m); if (!seesMove(m, 0)) unseen.push(m); unmakeMove(); }
+  for (const m of rootMoves) {
+    makeMove(m);
+    if (!seesMove(m, 0)) unseen.push(m);
+    unmakeMove();
+  }
   return unseen.length === rootMoves.length ? [] : unseen;
 }
 
@@ -426,11 +432,15 @@ function playRandomly() {
   let choice = moves[mix32(keyLo ^ seedKey) % moves.length];
   for (const m of moves) {
     makeMove(m);
-    const mate = legalMoves().length === 0 && isAttacked(kingSq[side], side ^ 1);
+    const mate = legalMoves().length === 0 &&
+      isAttacked(kingSq[side], side ^ 1);
     unmakeMove();
     if (mate) { choice = m; break; }
   }
-  out(`info depth 1 multipv 1 score cp 0 nodes ${moves.length} nps 0 time 0 pv ${moveToUci(choice)}`);
+  out(
+    `info depth 1 multipv 1 score cp 0 nodes ${moves.length} ` +
+    `nps 0 time 0 pv ${moveToUci(choice)}`
+  );
   out("bestmove " + moveToUci(choice));
 }
 
@@ -462,20 +472,37 @@ function mix32(x) {
 
 const MG_VALUE = [0, 100, 320, 330, 500, 900, 0];
 const EG_VALUE = [0, 120, 320, 330, 520, 920, 0];
-const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];    // 24 at the start, 0 when only kings and pawns remain
-const placeMg = new Int16Array(16 * 128), placeEg = new Int16Array(16 * 128);   // placement bonuses, signed by colour
+// 24 at the start, 0 when only kings and pawns remain.
+const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];
+
+// Placement bonuses, signed by colour.
+const placeMg = new Int16Array(16 * 128), placeEg = new Int16Array(16 * 128);
 
 /* Bonus for a white piece of `type` on file f, rank r (0 = rank 1). */
 function squareBonus(type, f, r) {
-  const centre = 3 - ((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) >> 1); // 3 in the centre, 0 at the rim
-  const home = r === 0 ? -10 : 0;                                                     // nudge to develop
+  const centre = 3 -
+    ((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) >> 1);
+  const home = r === 0 ? -10 : 0; // nudge to develop
   switch (type) {
-    case PAWN:   return [(r - 1) * 3 + ((f === 3 || f === 4) && (r === 3 || r === 4) ? 15 : 0), (r - 1) * 12];
+    case PAWN:
+      return [
+        (r - 1) * 3 +
+          ((f === 3 || f === 4) && (r === 3 || r === 4) ? 15 : 0),
+        (r - 1) * 12
+      ];
     case KNIGHT: return [centre * 12 - 24 + home, centre * 12 - 24];
     case BISHOP: return [centre * 6 - 12 + home, centre * 6 - 12];
-    case ROOK:   return [(f === 3 || f === 4 ? 5 : 0) + (r === 6 ? 15 : 0), r === 6 ? 15 : 0];
+    case ROOK:
+      return [
+        (f === 3 || f === 4 ? 5 : 0) + (r === 6 ? 15 : 0),
+        r === 6 ? 15 : 0
+      ];
     case QUEEN:  return [centre * 3 - 6, centre * 5 - 10];
-    case KING:   return [-Math.min(r, 3) * 25 + (f <= 2 || f >= 5 ? 20 : -10), centre * 15 - 30];
+    case KING:
+      return [
+        -Math.min(r, 3) * 25 + (f <= 2 || f >= 5 ? 20 : -10),
+        centre * 15 - 30
+      ];
   }
 }
 
@@ -484,20 +511,25 @@ function initEvaluation() {
     for (let s = 0; s < 128; s++) {
       if (s & 0x88) continue;
       const [mg, eg] = squareBonus(type, s & 7, s >> 4);
-      placeMg[type * 128 + s] = mg; placeEg[type * 128 + s] = eg;                          // white: as is
-      placeMg[(type | 8) * 128 + (s ^ 0x70)] = -mg; placeEg[(type | 8) * 128 + (s ^ 0x70)] = -eg;   // black: mirrored and negated
+      placeMg[type * 128 + s] = mg;
+      placeEg[type * 128 + s] = eg; // white: as is
+      placeMg[(type | 8) * 128 + (s ^ 0x70)] = -mg;
+      placeEg[(type | 8) * 128 + (s ^ 0x70)] = -eg;
+      // Black: mirrored and negated.
     }
   }
 }
 
 function evaluate() {
-  let mg = 0, eg = 0, phase = 0;                 // mg and eg are white minus black
+  let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
   for (let s = 0; s < 128; s++) {
     if (s & 0x88) { s += 7; continue; }
     const p = board[s];
     if (p === EMPTY) continue;
     const type = p & 7, sign = p < 8 ? 1 : -1;
-    mg += sign * MG_VALUE[type]; eg += sign * EG_VALUE[type]; phase += PHASE_INC[type];
+    mg += sign * MG_VALUE[type];
+    eg += sign * EG_VALUE[type];
+    phase += PHASE_INC[type];
     mg += placeMg[p * 128 + s];
     eg += placeEg[p * 128 + s];
   }
@@ -553,7 +585,7 @@ const board = new Int8Array(128);
 const kingSq = new Int32Array(2);
 const pieceCount = new Int32Array(16);
 let side = WHITE, castling = 0, epSq = -1, fifty = 0;
-let keyLo = 0, keyHi = 0;                  // 64-bit Zobrist key as two 32-bit halves
+let keyLo = 0, keyHi = 0; // 64-bit Zobrist key as two 32-bit halves
 
 const castleRookSq = new Int32Array(4).fill(-1);
 const castleKingTo = [6, 2, 118, 114];  // g1 c1 g8 c8
@@ -563,10 +595,13 @@ let chess960 = false;
 
 const HISTORY_SIZE = 2048;             // game moves plus search plies
 let hply = 0;
-const histMove = new Int32Array(HISTORY_SIZE), histCaptured = new Int8Array(HISTORY_SIZE);
-const histCastle = new Int8Array(HISTORY_SIZE), histEp = new Int16Array(HISTORY_SIZE);
+const histMove = new Int32Array(HISTORY_SIZE);
+const histCaptured = new Int8Array(HISTORY_SIZE);
+const histCastle = new Int8Array(HISTORY_SIZE);
+const histEp = new Int16Array(HISTORY_SIZE);
 const histFifty = new Int16Array(HISTORY_SIZE);
-const histKeyLo = new Int32Array(HISTORY_SIZE), histKeyHi = new Int32Array(HISTORY_SIZE);
+const histKeyLo = new Int32Array(HISTORY_SIZE);
+const histKeyHi = new Int32Array(HISTORY_SIZE);
 
 /* Place nonempty packed piece p on empty on-board square s.
    Also update its count, piece hash and (for a king) kingSq. */
@@ -658,7 +693,8 @@ function unmakeMove() {
   const us = side;
   if (flag === FLAG_CASTLE) {
     const castle = us * 2 + (to > from ? 0 : 1);
-    const king = board[castleKingTo[castle]], rook = board[castleRookTo[castle]];
+    const king = board[castleKingTo[castle]];
+    const rook = board[castleRookTo[castle]];
     removePiece(castleKingTo[castle]);
     removePiece(castleRookTo[castle]);
     addPiece(from, king);
@@ -667,7 +703,8 @@ function unmakeMove() {
     const piece = board[to];
     removePiece(to);
     addPiece(from, promotion ? PAWN | (us << 3) : piece);
-    if (flag === FLAG_EP) addPiece(to + (us === WHITE ? -16 : 16), PAWN | ((us ^ 1) << 3));
+    if (flag === FLAG_EP)
+      addPiece(to + (us === WHITE ? -16 : 16), PAWN | ((us ^ 1) << 3));
     else if (histCaptured[hply] !== EMPTY) addPiece(to, histCaptured[hply]);
   }
   castling = histCastle[hply];
@@ -684,9 +721,10 @@ function isDraw() {
   if (fifty >= 100) return true;
   for (let i = hply - 2; i >= 0 && i >= hply - fifty; i -= 2)
     if (histKeyLo[i] === keyLo && histKeyHi[i] === keyHi) return true;
-  if (pieceCount[PAWN] + pieceCount[PAWN | 8] + pieceCount[ROOK] + pieceCount[ROOK | 8] +
-      pieceCount[QUEEN] + pieceCount[QUEEN | 8] === 0 &&
-      pieceCount[KNIGHT] + pieceCount[KNIGHT | 8] + pieceCount[BISHOP] + pieceCount[BISHOP | 8] <= 1) return true;
+  if (pieceCount[PAWN] + pieceCount[PAWN | 8] + pieceCount[ROOK] +
+      pieceCount[ROOK | 8] + pieceCount[QUEEN] + pieceCount[QUEEN | 8] === 0 &&
+      pieceCount[KNIGHT] + pieceCount[KNIGHT | 8] +
+      pieceCount[BISHOP] + pieceCount[BISHOP | 8] <= 1) return true;
   return false;
 }
 
@@ -740,8 +778,10 @@ function setPosition(fen) {
 function setCastlingRights(rights) {
   for (const ch of rights) {
     if (ch === "-") continue;
-    const colour = ch === ch.toUpperCase() ? WHITE : BLACK, rankBase = colour === WHITE ? 0 : 112;
-    const rook = ROOK | (colour << 3), kingFile = kingSq[colour] & 7, letter = ch.toUpperCase();
+    const colour = ch === ch.toUpperCase() ? WHITE : BLACK;
+    const rankBase = colour === WHITE ? 0 : 112;
+    const rook = ROOK | (colour << 3);
+    const kingFile = kingSq[colour] & 7, letter = ch.toUpperCase();
     let rookFile = -1;
     if (letter === "K") {
       for (let f = 7; f > kingFile; f--) {
@@ -780,10 +820,13 @@ function toFen() {
     if (!(castling & (1 << c))) continue;
     const file = castleRookSq[c] & 7;
     const standard = (c & 1) === 0 ? file === 7 : file === 0;
-    const ch = chess960 && !standard ? "abcdefgh"[file] : (c & 1) === 0 ? "k" : "q";
+    const ch = chess960 && !standard
+      ? "abcdefgh"[file]
+      : (c & 1) === 0 ? "k" : "q";
     rights += c < 2 ? ch.toUpperCase() : ch;
   }
-  return `${fen} ${side === WHITE ? "w" : "b"} ${rights || "-"} ${epSq >= 0 ? squareName(epSq) : "-"} ${fifty} ${1 + (hply >> 1)}`;
+  return `${fen} ${side === WHITE ? "w" : "b"} ${rights || "-"} ` +
+    `${epSq >= 0 ? squareName(epSq) : "-"} ${fifty} ${1 + (hply >> 1)}`;
 }
 
 /* ---- Move notation -------------------------------------------------
@@ -792,16 +835,24 @@ function toFen() {
 function moveToUci(m) {
   const from = moveFrom(m);
   let to = moveTo(m);
-  if (moveFlag(m) === FLAG_CASTLE && !chess960) to = castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)];
-  return squareName(from) + squareName(to) + (movePromo(m) ? PIECE_CHARS[movePromo(m) | 8] : "");
+  if (moveFlag(m) === FLAG_CASTLE && !chess960)
+    to = castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)];
+  const promotion = movePromo(m)
+    ? PIECE_CHARS[movePromo(m) | 8]
+    : "";
+  return squareName(from) + squareName(to) + promotion;
 }
 
 function parseMove(str) {
   for (const m of legalMoves()) {
     if (moveToUci(m) === str) return m;
-    if (moveFlag(m) === FLAG_CASTLE) {       // accept the other castling notation too
+    if (moveFlag(m) === FLAG_CASTLE) {
+      // Accept the other castling notation too.
       const from = moveFrom(m), to = moveTo(m);
-      const other = squareName(from) + squareName(chess960 ? castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)] : to);
+      const castleTo = chess960
+        ? castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)]
+        : to;
+      const other = squareName(from) + squareName(castleTo);
       if (other === str) return m;
     }
   }
@@ -835,7 +886,10 @@ const KNIGHT_OFFSETS = [-33, -31, -18, -14, 14, 18, 31, 33];
 const BISHOP_OFFSETS = [-17, -15, 15, 17];
 const ROOK_OFFSETS = [-16, -1, 1, 16];
 const KING_OFFSETS = [-17, -16, -15, -1, 1, 15, 16, 17];
-const PIECE_OFFSETS = [null, null, KNIGHT_OFFSETS, BISHOP_OFFSETS, ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS];
+const PIECE_OFFSETS = [
+  null, null, KNIGHT_OFFSETS, BISHOP_OFFSETS,
+  ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS
+];
 
 /* Generate pseudo-legal moves for the current position and side to move.
    `first` is a nonnegative integer index into moveStack, with room for
@@ -847,7 +901,9 @@ const PIECE_OFFSETS = [null, null, KNIGHT_OFFSETS, BISHOP_OFFSETS, ROOK_OFFSETS,
 function generateMoves(first) {
   let n = first;
   const us = side, them = side ^ 1;
-  const up = us === WHITE ? 16 : -16, startRank = us === WHITE ? 1 : 6, promoRank = us === WHITE ? 7 : 0;
+  const up = us === WHITE ? 16 : -16;
+  const startRank = us === WHITE ? 1 : 6;
+  const promoRank = us === WHITE ? 7 : 0;
 
   for (let s = 0; s < 128; s++) {
     if (s & 0x88) { s += 7; continue; }
@@ -858,10 +914,14 @@ function generateMoves(first) {
     if (type === PAWN) {
       let to = s + up;
       if (board[to] === EMPTY) {
-        if ((to >> 4) === promoRank) for (let pr = QUEEN; pr >= KNIGHT; pr--) moveStack[n++] = encodeMove(s, to, pr, 0);
+        if ((to >> 4) === promoRank) {
+          for (let pr = QUEEN; pr >= KNIGHT; pr--)
+            moveStack[n++] = encodeMove(s, to, pr, 0);
+        }
         else {
           moveStack[n++] = encodeMove(s, to, 0, 0);
-          if ((s >> 4) === startRank && board[to + up] === EMPTY) moveStack[n++] = encodeMove(s, to + up, 0, 0);
+          if ((s >> 4) === startRank && board[to + up] === EMPTY)
+            moveStack[n++] = encodeMove(s, to + up, 0, 0);
         }
       }
       for (let d = -1; d <= 1; d += 2) {
@@ -869,19 +929,26 @@ function generateMoves(first) {
         if (to & 0x88) continue;
         const c = board[to];
         if (c !== EMPTY && (c >> 3) === them) {
-          if ((to >> 4) === promoRank) for (let pr = QUEEN; pr >= KNIGHT; pr--) moveStack[n++] = encodeMove(s, to, pr, 0);
+          if ((to >> 4) === promoRank) {
+            for (let pr = QUEEN; pr >= KNIGHT; pr--)
+              moveStack[n++] = encodeMove(s, to, pr, 0);
+          }
           else moveStack[n++] = encodeMove(s, to, 0, 0);
         } else if (to === epSq) moveStack[n++] = encodeMove(s, to, 0, FLAG_EP);
       }
       continue;
     }
 
-    const offsets = PIECE_OFFSETS[type], slides = type >= BISHOP && type <= QUEEN;
+    const offsets = PIECE_OFFSETS[type];
+    const slides = type >= BISHOP && type <= QUEEN;
     for (let i = 0; i < offsets.length; i++) {
       for (let to = s + offsets[i]; !(to & 0x88); to += offsets[i]) {
         const c = board[to];
         if (c === EMPTY) moveStack[n++] = encodeMove(s, to, 0, 0);
-        else { if ((c >> 3) === them) moveStack[n++] = encodeMove(s, to, 0, 0); break; }
+        else {
+          if ((c >> 3) === them) moveStack[n++] = encodeMove(s, to, 0, 0);
+          break;
+        }
         if (!slides) break;
       }
     }
@@ -892,12 +959,18 @@ function generateMoves(first) {
   // them, and the king may not start in, pass through or end in check.
   for (let c = us * 2; c < us * 2 + 2; c++) {
     if (!(castling & (1 << c))) continue;
-    const kFrom = kingSq[us], rFrom = castleRookSq[c], kTo = castleKingTo[c], rTo = castleRookTo[c];
-    const lo = Math.min(kFrom, kTo, rFrom, rTo), hi = Math.max(kFrom, kTo, rFrom, rTo);
+    const kFrom = kingSq[us], rFrom = castleRookSq[c];
+    const kTo = castleKingTo[c], rTo = castleRookTo[c];
+    const lo = Math.min(kFrom, kTo, rFrom, rTo);
+    const hi = Math.max(kFrom, kTo, rFrom, rTo);
     let ok = true;
-    for (let s = lo; s <= hi && ok; s++) if (s !== kFrom && s !== rFrom && board[s] !== EMPTY) ok = false;
+    for (let s = lo; s <= hi && ok; s++) {
+      if (s !== kFrom && s !== rFrom && board[s] !== EMPTY) ok = false;
+    }
     const step = kTo > kFrom ? 1 : -1;
-    for (let s = kFrom; ok && s !== kTo + step; s += step) if (isAttacked(s, them)) ok = false;
+    for (let s = kFrom; ok && s !== kTo + step; s += step) {
+      if (isAttacked(s, them)) ok = false;
+    }
     if (ok) moveStack[n++] = encodeMove(kFrom, rFrom, 0, FLAG_CASTLE);
   }
   return n;
@@ -927,11 +1000,14 @@ function isAttacked(s, by) {
   for (let i = 0; i < 8; i++) {
     const off = KING_OFFSETS[i];
     if (!((s + off) & 0x88) && board[s + off] === king) return true;
-    const slider = (off === -16 || off === -1 || off === 1 || off === 16) ? ROOK : BISHOP;
+    const slider = (off === -16 || off === -1 || off === 1 || off === 16)
+      ? ROOK
+      : BISHOP;
     for (let t = s + off; !(t & 0x88); t += off) {
       const p = board[t];
       if (p === EMPTY) continue;
-      if ((p >> 3) === by && ((p & 7) === QUEEN || (p & 7) === slider)) return true;
+      if ((p >> 3) === by &&
+          ((p & 7) === QUEEN || (p & 7) === slider)) return true;
       break;
     }
   }
@@ -959,14 +1035,21 @@ function rand32() {
   return x | 0;
 }
 
-const zobPieceLo = new Int32Array(16 * 128), zobPieceHi = new Int32Array(16 * 128);
+const zobPieceLo = new Int32Array(16 * 128);
+const zobPieceHi = new Int32Array(16 * 128);
 const zobCastleLo = new Int32Array(16), zobCastleHi = new Int32Array(16);
 const zobEpLo = new Int32Array(8), zobEpHi = new Int32Array(8);
 let zobSideLo = 0, zobSideHi = 0;
 
 function initZobrist() {
-  for (let i = 0; i < 16 * 128; i++) { zobPieceLo[i] = rand32(); zobPieceHi[i] = rand32(); }
-  for (let i = 0; i < 16; i++) { zobCastleLo[i] = rand32(); zobCastleHi[i] = rand32(); }
+  for (let i = 0; i < 16 * 128; i++) {
+    zobPieceLo[i] = rand32();
+    zobPieceHi[i] = rand32();
+  }
+  for (let i = 0; i < 16; i++) {
+    zobCastleLo[i] = rand32();
+    zobCastleHi[i] = rand32();
+  }
   for (let i = 0; i < 8; i++) { zobEpLo[i] = rand32(); zobEpHi[i] = rand32(); }
   zobSideLo = rand32(); zobSideHi = rand32();
 }
@@ -991,21 +1074,35 @@ function uciCommand(line) {
       out(`id name ${NAME} ${VERSION}`);
       out("id author Copilot (Claude Fable 5.1)");
       // ---- UCI options ------------------------------------------------
-      out("option name Hash type spin default 16 min 1 max 1024");       // accepted, no effect: there is no transposition table yet
-      out("option name Threads type spin default 1 min 1 max 1");        // accepted for OpenBench; always single-threaded
-      out("option name MultiPV type spin default 1 min 1 max 256");      // number of best lines to report
-      out("option name UCI_Chess960 type check default false");          // castling notation: king-takes-rook
-      out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`); // 1 = random mover, SKILL_MAX = full strength
-      out("option name Skill_Seed type spin default 0 min 0 max 2147483647"); // which deterministic opponent; 0 = built-in
+      // Accepted, no effect: there is no transposition table yet.
+      out("option name Hash type spin default 16 min 1 max 1024");
+
+      // Accepted for OpenBench; always single-threaded.
+      out("option name Threads type spin default 1 min 1 max 1");
+
+      // Castling notation: king-takes-rook.
+      out("option name UCI_Chess960 type check default false");
+
+      out(
+        `option name Skill_Level type spin default ${SKILL_MAX} ` +
+        `min 1 max ${SKILL_MAX}`
+      ); // 1 = random mover, SKILL_MAX = full strength
+
+      // Which deterministic opponent; 0 = built-in.
+      out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
+
       out("uciok");
       break;
     case "setoption": {
       const nameAt = tokens.indexOf("name"), valueAt = tokens.indexOf("value");
-      const name = tokens.slice(nameAt + 1, valueAt > 0 ? valueAt : undefined).join(" ").toLowerCase();
+      const name = tokens
+        .slice(nameAt + 1, valueAt > 0 ? valueAt : undefined)
+        .join(" ")
+        .toLowerCase();
       const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
-      if (name === "multipv") multiPV = Math.min(256, Math.max(1, parseInt(value) || 1));
-      else if (name === "uci_chess960") chess960 = value.toLowerCase() === "true";
-      else if (name === "skill_level") setSkillLevel(parseInt(value) || SKILL_MAX);
+      if (name === "uci_chess960") chess960 = value.toLowerCase() === "true";
+      else if (name === "skill_level")
+        setSkillLevel(parseInt(value) || SKILL_MAX);
       else if (name === "skill_seed") setSkillSeed(parseInt(value) || 0);
       // "hash" and "threads" are accepted and ignored
       break;
@@ -1014,9 +1111,18 @@ function uciCommand(line) {
     case "ucinewgame": setPosition(START_FEN); break;
     case "position": {
       const movesAt = tokens.indexOf("moves");
-      if (tokens[1] === "fen") setPosition(tokens.slice(2, movesAt > 0 ? movesAt : undefined).join(" "));
+      if (tokens[1] === "fen") {
+        setPosition(
+          tokens.slice(2, movesAt > 0 ? movesAt : undefined).join(" ")
+        );
+      }
       else setPosition(START_FEN);
-      if (movesAt > 0) for (const str of tokens.slice(movesAt + 1)) { const m = parseMove(str); if (m) makeMove(m); }
+      if (movesAt > 0) {
+        for (const str of tokens.slice(movesAt + 1)) {
+          const m = parseMove(str);
+          if (m) makeMove(m);
+        }
+      }
       break;
     }
     case "go": {
@@ -1030,8 +1136,11 @@ function uciCommand(line) {
       think();
       break;
     }
-    case "stop": break;                       // handled by the I/O layer while searching
-    case "quit": out("quit"); break;          // echoed back so the I/O layer knows the queue is drained
+    case "stop":
+      break; // handled by the I/O layer while searching
+    case "quit":
+      out("quit");
+      break; // echoed back so the I/O layer knows the queue is drained
     case "bench": bench(parseInt(tokens[1]) || BENCH_DEPTH); break;
     case "perft": perftDivide(parseInt(tokens[1]) || 4); break;
     case "d": display(); break;
@@ -1039,7 +1148,8 @@ function uciCommand(line) {
   }
 }
 
-/* ---- Perft: count leaf nodes to a depth; the standard way to test a move generator. */
+/* ---- Perft: count leaf nodes to a depth; the standard way to test a
+   move generator. */
 function perft(depth, ply) {
   if (depth === 0) return 1;
   let count = 0;
@@ -1063,7 +1173,10 @@ function perftDivide(depth) {
     out(`${moveToUci(m)}: ${count}`);
   }
   const ms = now() - t0;
-  out(`perft ${depth} nodes ${total} time ${Math.round(ms)} nps ${Math.round(total * 1000 / Math.max(1, ms))}`);
+  out(
+    `perft ${depth} nodes ${total} time ${Math.round(ms)} ` +
+    `nps ${Math.round(total * 1000 / Math.max(1, ms))}`
+  );
 }
 
 /* ---- Bench: a fixed set of positions to a fixed depth. OpenBench
@@ -1101,7 +1214,10 @@ function bench(depth) {
     out(`info string ${nodes} nodes  ${fen}`);
   }
   setSkillLevel(savedLevel);
-  out(`${totalNodes} nodes ${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`);
+  out(
+    `${totalNodes} nodes ` +
+    `${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`
+  );
 }
 
 function display() {
@@ -1112,17 +1228,25 @@ function display() {
   }
   out("   a b c d e f g h");
   out(`fen ${toFen()}`);
-  out(`key ${((keyHi >>> 0).toString(16)).padStart(8, "0")}${((keyLo >>> 0).toString(16)).padStart(8, "0")}`);
+  const key = ((keyHi >>> 0).toString(16)).padStart(8, "0") +
+    ((keyLo >>> 0).toString(16)).padStart(8, "0");
+  out(`key ${key}`);
   out(`eval ${evaluate()} (side to move)`);
 }
 
 /* ---- Start-up and I/O ---------------------------------------------
-   The search is synchronous, so while it runs nobody is reading
-   input. In Bun the main thread therefore only reads stdin: it
-   forwards each line to a Worker running the engine, and raises a
-   shared "stop" flag when asked, which the search polls. In a
-   browser, the page plays the role of that main thread (see
-   index.html). The engine itself is always a single thread. */
+   Search is single-threaded, but normal UCI operation uses two
+   threads: the main thread reads input and the worker searches.
+   In a browser, the page is the main thread (see index.html).
+   The direct Bun bench command below runs without a worker.
+
+   Search is synchronous: the worker cannot process another message
+   until think() returns. A posted "stop" message would therefore
+   arrive too late. Instead, the main thread sets a stop flag in a
+   SharedArrayBuffer and checkLimits() polls it during search.
+   Atomics.store/load synchronize that shared flag across threads;
+   they do not make the search parallel. Ordinary commands and
+   results still travel through worker messages. */
 initZobrist();
 initEvaluation();
 setSkillSeed(0);
@@ -1130,10 +1254,12 @@ setPosition(START_FEN);
 
 const isBun = typeof Bun !== "undefined";
 const inWorker = isBun ? !Bun.isMainThread
-  : typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+  : typeof WorkerGlobalScope !== "undefined" &&
+    self instanceof WorkerGlobalScope;
 
 if (isBun && Bun.isMainThread) {
-  if (process.argv[2] === "bench") {              // `bun pedagog.js bench [depth]`, as OpenBench runs it
+  if (process.argv[2] === "bench") {
+    // `bun pedagog.js bench [depth]`, as OpenBench runs it.
     uciCommand("bench " + (process.argv[3] || ""));
     process.exit(0);
   }
@@ -1157,7 +1283,8 @@ if (isBun && Bun.isMainThread) {
         worker.postMessage(line);
       }
     }
-    worker.postMessage("quit");   // stdin closed: let the worker finish its queue, then exit
+    worker.postMessage("quit");
+    // Stdin closed: let the worker finish its queue, then exit.
   })();
 } else if (inWorker) {
   out = (line) => self.postMessage(line);
@@ -1169,13 +1296,3 @@ if (isBun && Bun.isMainThread) {
   // Browser main thread (or any other host): drive it by hand.
   globalThis.Pedagog = { uci: uciCommand, setOutput: (fn) => { out = fn; } };
 }
-
-/*
-================================================================
-   COLOPHON
-================================================================
-   Who wrote this, how long it took, how the strength was measured
-   against Maia-1900 and the brief it was written to: see
-   COLOPHON.md next to this file.
-================================================================
-*/

@@ -4,22 +4,23 @@ import { engine, stableOutput } from "./engine.js";
 
 const fingerprint = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
-// Captured from revision 018a779 with Chapter=7 before refactoring.
-// Every depth's score, nodes, PV, bestmove and ponder are included;
-// only machine-dependent elapsed time and NPS are removed.
+// Originally captured from 018a779 with Chapter=7; normalized without
+// ponder from equivalent committed baseline be39b8d.
+// Every depth's score, nodes, PV and bestmove are included;
+// elapsed time, NPS and the retired ponder output hint are removed.
 const searchFixtures = [
-  ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "6b161cd2c3d2ca8f9dc24a1f188953aa723a234ec8a78d84752cc6b731ba664a"],
-  ["r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "90e3a61dd560d0f6913d8aa03b83d703d70926cf959f0e0e3014543163186c15"],
-  ["8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "6d889ebf83d387785c841ee46c02f81d5bcc84286b1428ed9238ef86feecbba7"],
-  ["r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", "8b4c59acda9b26cfecb63fbe8933f03e59e4eb0822663868aa9ed5ac38f89eef"],
-  ["rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", "1ff6d3b29f73331de0549ed93e4debd4d78ecac82271a357dccddabd23f615c8"],
-  ["r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", "2249c20db131d75967d58ddcb65e0e13b5196850102dada7176d91a6dd458be6"],
-  ["r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "ab3d1805393fd344536d961a50c4a8676cd1d362031b34c585638993eefb7bf2"],
-  ["2rq1rk1/pp1bppbp/3p1np1/8/3NP3/1BN1BP2/PPPQ2PP/2KR3R w - - 0 12", "51d8ca6b3c56645fc129b195d3c9168ae5914f17ff4c41b0757ff9d38bf3e315"],
-  ["8/8/1p1k4/p1p2p2/P1P2P2/1P1K4/8/8 w - - 0 1", "8625a3f07ef6b316cecf2589ad072d48d3795f5b1103c36d8e12feeba6ddd4d8"],
+  ["rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "b216cf05d8dd2271931d64800b742288b64faacfc564869b444359ca6f35834e"],
+  ["r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1", "52330429569d7d97f2986a68b9fc9d463607a38875772665b0dfc5f5e686bdc0"],
+  ["8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1", "db8d43b2b51ffb5ca79add96137766113d8e59e24e5508fb44289016030fc042"],
+  ["r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", "c7f984ca142f6bee3f25cb4321693d6be6882be38f4aea9f21308e1e773827a8"],
+  ["rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", "3e9281c22361441db6e57692273acb1e4b0fbe12924cae65cefc5fe62a58b155"],
+  ["r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", "d266cb22bedc44d7c87dda3662f83c6d65d1805b4da031f416ada9e524076baa"],
+  ["r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "52778e44bbc7030419487ddb458f2457137e7ad11a216a2b06a15c5745dfa77b"],
+  ["2rq1rk1/pp1bppbp/3p1np1/8/3NP3/1BN1BP2/PPPQ2PP/2KR3R w - - 0 12", "f4a4e5629f339627a0a1a1c70df84442611059e435eebafa86d64a96fa84ffbe"],
+  ["8/8/1p1k4/p1p2p2/P1P2P2/1P1K4/8/8 w - - 0 1", "88ed5025f162b5b2113e381bedc57ee3c87034e79c5bfc33f82224e32976e33c"],
   ["6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1", "a3f7827f3445adf4802bb0867e650a5adabc6dbbb2d8560575cbf41d32bd3688"],
-  ["r2q1rk1/ppp2ppp/2n1bn2/2bpp3/3PP3/2P2N2/PP1NBPPP/R1BQ1RK1 b - - 0 9", "7de4754b227c18c4753531d327ad671dd5fb4e6dba880703160a291966e1e67f"],
-  ["1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1", "7deadc5dbd40c610ff3534dc5b03aef7f72454175406980c1cb894689817db2c"],
+  ["r2q1rk1/ppp2ppp/2n1bn2/2bpp3/3PP3/2P2N2/PP1NBPPP/R1BQ1RK1 b - - 0 9", "6e34d30292bde54db8c13bccbacefca6d3073c192ec1fb703a9c9820ac29895e"],
+  ["1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1", "6b68a795e8f369fed60fda0f794ffdddbf9c3d3544741fa5be4486bf8450e564"],
 ];
 
 for (const [fen, expected] of searchFixtures) {
@@ -34,8 +35,8 @@ for (const [fen, expected] of searchFixtures) {
 }
 
 for (const [seed, expected] of [
-  [0, "bb30bbd464b92f3003810c82ab4e2cd1407c00cdb87f2b1b1a74fde77b8d1e33"],
-  [42, "9b77fd7f2e3c80588472243f638b19bd60f7d8ca9240120e35fe42f07b426c7f"],
+  [0, "63c8f1d96e4051c3c1dbffebf7febf4d9b4d6368ff69d798e3aa2285c6be5be2"],
+  [42, "63567b9ae379212800a5317e6f2c3915edb3f9d4532887e5efd332371511654d"],
 ]) {
   test(`original transcripts at all ten skill levels, seed ${seed}`, () => {
     const e = engine(), transcripts = [];
@@ -51,11 +52,11 @@ for (const [seed, expected] of [
   });
 }
 
-test("original three-line MultiPV transcript", () => {
+test("removed MultiPV option cannot change the original single-line search", () => {
   const e = engine();
   e.command("setoption name MultiPV value 3");
   e.command("go depth 3");
-  expect(fingerprint(stableOutput(e.output))).toBe("328aea1c86d514d3d1f5bb5f0d6436c5cb9bcae4c9583fcb3926ef0ec15bd468");
+  expect(fingerprint(stableOutput(e.output))).toBe(searchFixtures[0][1]);
 });
 
 test("original depth-5 OpenBench signature", () => {

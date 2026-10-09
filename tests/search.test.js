@@ -82,13 +82,14 @@ test("think preserves the last completed line on interruption and honors soft ti
   expect(e.output.at(-1)).toBe("bestmove b1c3");
 });
 
-test("MultiPV never exceeds the number of visible root moves", () => {
+test("single-line search still excludes overlooked root moves at every depth", () => {
   const e = engine();
   e.run("overlookedRootMoves = (moves) => moves.slice(1)");
-  e.command("setoption name MultiPV value 256");
   e.command("go depth 2");
   expect(e.output.filter((line) => line.startsWith("info depth"))).toHaveLength(2);
-  expect(e.output.at(-1)).toMatch(/^bestmove \w{4} ponder \w{4}$/);
+  expect(e.output.at(-1)).toMatch(/^bestmove \w{4}$/);
+  expect(e.read("rootSkipped.length")).toBe(19);
+  expect(e.output.at(-1)).toStartWith("bestmove b1a3");
 });
 
 test("PV update appends the child's line", () => {

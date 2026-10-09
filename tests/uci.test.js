@@ -6,7 +6,8 @@ test("UCI handshake, readiness, ignored commands, stop and quit", () => {
   e.command("  uci  ");
   expect(e.output[0]).toBe("id name Pedagog 1.0");
   expect(e.output.at(-1)).toBe("uciok");
-  expect(e.output.filter((line) => line.startsWith("option name "))).toHaveLength(6);
+  expect(e.output.filter((line) => line.startsWith("option name "))).toHaveLength(5);
+  expect(e.output.some((line) => line.startsWith("option name MultiPV"))).toBe(false);
   expect(e.output.some((line) => line.includes("Chapter"))).toBe(false);
   e.output.length = 0;
   for (const command of ["", "unknown", "stop", "setoption", "setoption name Unknown value 3", "setoption name Hash value 64", "setoption name Threads value 1"]) e.command(command);
@@ -17,7 +18,6 @@ test("UCI handshake, readiness, ignored commands, stop and quit", () => {
 });
 
 for (const [name, variable, cases] of [
-  ["MultiPV", "multiPV", [["0", 1], ["999", 256], ["3", 3], ["invalid", 1], ["", 1]]],
   ["Skill_Level", "skillLevel", [["-9", 1], ["999", 10], ["4", 4], ["invalid", 10], ["", 10]]],
   ["Skill_Seed", "skillSeed", [["0", 0], ["42", 42], ["invalid", 0], ["", 0]]],
   ["UCI_Chess960", "chess960", [["TRUE", true], ["false", false], ["invalid", false], ["", false]]],
@@ -112,10 +112,10 @@ test("hard limits: first iteration, node count, clock and shared stop flag", () 
 
 test("report formats centipawns, winning/losing mate, PV and elapsed time", () => {
   const e = engine();
-  e.run("nodes = 100; pvTable[0] = parseMove('e2e4'); pvLength[0] = 1; report(1, 0, 25)");
+  e.run("nodes = 100; pvTable[0] = parseMove('e2e4'); pvLength[0] = 1; report(1, 25)");
   expect(e.output.at(-1)).toBe("info depth 1 multipv 1 score cp 25 nodes 100 nps 0 time 0 pv e2e4");
   e.clock(50);
-  e.run("report(3, 1, MATE - 3); report(3, 0, -MATE + 4)");
-  expect(e.output.at(-2)).toContain("multipv 2 score mate 2 nodes 100 nps 2000 time 50");
+  e.run("report(3, MATE - 3); report(3, -MATE + 4)");
+  expect(e.output.at(-2)).toContain("score mate 2 nodes 100 nps 2000 time 50");
   expect(e.output.at(-1)).toContain("score mate -2");
 });

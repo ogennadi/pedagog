@@ -277,8 +277,10 @@ and PeSTO only if the engine turned out too weak, and it did not.
 Run `bun test` for the engine tests in `tests/`, using an isolated VM harness
 without adding production exports. Frozen fixtures from the original full
 engine compare deterministic search transcripts (scores, PVs, nodes,
-best moves and ponder moves, excluding time and NPS): twelve bench positions
-at depth 3, all ten skills with seeds 0 and 42, and MultiPV 3. The depth-5
+best moves, excluding time, NPS and the retired ponder hint): twelve bench positions
+at depth 3 and all ten skills with seeds 0 and 42. MultiPV has been removed;
+the engine searches one best line while retaining skill weakening. The fixed
+`multipv 1` output field preserves the original single-line transcript. The depth-5
 bench total is pinned at 1,310,439 nodes. Tests also exercise UCI, fake-clock
 timing and stop handling, search edge branches, evaluation, perft and
 make/unmake restoration. These are regression checks, not exhaustive
