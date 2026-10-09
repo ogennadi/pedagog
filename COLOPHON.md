@@ -18,22 +18,17 @@ half a million tokens in all.
 
 ## Part II — Skill levels
 
-### The chapters: how the engine is organised
+### Historical measurements of the search ideas
 
-`pedagog.js` is written as seven cumulative **chapters**, each adding one
-idea, and the ideas stay visible as such: every one after the first is a
-single block guarded by `chapter >= CHAPTER.<name>`. At the last chapter
-every guard is true, so this is the full engine with no dead code; set the
-`Chapter` UCI option lower and you have the engine as it was before that
-idea — which is how the ideas were measured. `bun run chapter 4 >
-pedagog-ch4.js` writes out chapter 4 as a complete engine of its own, with
-no mention of what comes later (`tools/chapter.js` resolves the guards
-textually; the generated chapter 7 reproduces the full engine's bench node
-count exactly, 1,310,439).
+During development, seven cumulative versions (then called **chapters**)
+isolated the contribution of each search idea. The chapter selector,
+extractor, generated engines and separate chapter-rating data have since
+been removed; the current engine always includes all seven ideas. The
+table below preserves the historical measurements, not runnable variants
+or available commands.
 
-Measured with 200 games per pairing, each chapter against the one before and
-chapters 5–7 against Maia-1900, on the Lichess classical scale
-(`docs/chapters.json`):
+These were measured with 200 games per pairing, each version against the
+one before and versions 5–7 against Maia-1900, on the Lichess classical scale:
 
 | chapter | idea | rating | against the chapter before |
 |---|---|---|---|
@@ -45,10 +40,10 @@ chapters 5–7 against Maia-1900, on the Lichess classical scale
 | 6 | captures first | 1790 | +238 |
 | 7 | piece-square tables (and the taper) | 1906 | +149; matches level 10's 1894 from the skill ladder |
 
-Chapters 1–4 have no clock sense and are played at a fixed depth; the
-ratings of chapters 1–2 are only loosely tied to the scale (their games
+Versions 1–4 had no clock sense and were played at a fixed depth; the
+ratings of chapters 1–2 were only loosely tied to the scale (their games
 against chapter 3 were a whitewash). The skill ladder below sits on top of
-the last chapter.
+the full engine.
 
 ### What a level is
 
@@ -126,7 +121,7 @@ moves are judged, and book moves are not in the record.
 | mean loss / move | 23.5 pp | 11.6 | 10.9 | 10.8 | 8.4 | 7.6 | 6.5 | 5.7 | 5.8 | 5.1 |
 
 Even full strength blunders on 6.7 % of its moves by this yardstick: that is
-the horizon effect of a search without quiescence, and the next chapter.
+the horizon effect of a search without quiescence, a possible future addition.
 
 ### The web app
 
@@ -155,11 +150,11 @@ GPL-3; the engine file is independent of it.
 ### Tools
 
 `tools/match.js` (cutechess wrapper: `bun run match L7 maia-1500 300`;
-also `C4` for a chapter and `L10@6` for a fixed depth without a clock),
+also `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
 `tools/plot.py` (the figure), `tools/serve.js` (static server with the
-cross-origin-isolation headers), `tools/bundle.js` (the single-file app),
-`tools/chapter.js` (a chapter's engine as its own file). Match PGNs land in
+cross-origin-isolation headers), `tools/bundle.js` (the single-file app).
+Match PGNs land in
 `tools/out/` (ignored).
 
 ### The Part II brief
@@ -248,7 +243,7 @@ How the final choice was reached:
   and about 1.6x slower) gives **+117 ±47**, in the middle of the window.
   That is this file.
 
-Read as a ladder, the table says what the next chapters are worth at this
+Read as a ladder, the table says what further search ideas were worth at this
 level: incremental evaluation about +70 (speed), a quiescence search about
 +50 on top of captures-first (and +100 more once captures are ranked by
 victim — the two belong together), a transposition table about +100 more,
@@ -275,10 +270,19 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `pedagog.js` — the engine, one file, read top to bottom.
 - `index.html`, `web/`, `sw.js` — the web app (Part II); `bun run web` serves it.
 - `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
-- `chapters/` — the engine as it was at the end of each of the seven chapters (`bun run chapters` regenerates them).
-- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler, chapter extractor.
+- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler.
 - `docs/` — `skill-curve.png`, `skill-curve.json`, `blunders.json`.
-- `package.json` — `bun start`, `bun run bench`, `bun run perft`, `bun run web`.
+- `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`.
+
+Run `bun test` for the engine tests in `tests/`, using an isolated VM harness
+without adding production exports. Frozen fixtures from the original full
+engine compare deterministic search transcripts (scores, PVs, nodes,
+best moves and ponder moves, excluding time and NPS): twelve bench positions
+at depth 3, all ten skills with seeds 0 and 42, and MultiPV 3. The depth-5
+bench total is pinned at 1,310,439 nodes. Tests also exercise UCI, fake-clock
+timing and stop handling, search edge branches, evaluation, perft and
+make/unmake restoration. These are regression checks, not exhaustive
+coverage or a substitute for empirical Elo calibration.
 
 Verification done during the session: perft to depth 4–5 on six standard
 positions and eight Chess960 positions (all 58 node counts correct, ~10 M

@@ -35,11 +35,6 @@ function playerArgs(spec) {
     const tc = level >= SKILL_MAX && !depth ? "tc=10+0.1" : "tc=inf";
     return ["-engine", `name=${spec}`, "cmd=bun", `arg=${engine}`, "proto=uci", tc, `option.Skill_Level=${level}`, ...(depth ? [`depth=${depth}`] : [])];
   }
-  const c = /^C(\d+)$/.exec(spec);                 // C4: the engine as of chapter 4, at full skill
-  if (c) {
-    const ch = parseInt(c[1]);
-    return ["-engine", `name=${spec}`, "cmd=bun", `arg=${engine}`, "proto=uci", ch >= 5 ? "tc=10+0.1" : "tc=inf", `option.Chapter=${ch}`];
-  }
   if (/^maia-\d+$/.test(spec)) {
     return ["-engine", `name=${spec}`, `cmd=${lc0}`, `arg=--weights=${maiaDir}\\${spec}.pb.gz`, "arg=--backend=blas",
             "proto=uci", "tc=inf", "nodes=1", "option.Threads=1"];
@@ -47,11 +42,12 @@ function playerArgs(spec) {
   throw new Error("unknown player spec " + spec);
 }
 
+const players = [...playerArgs(a), ...playerArgs(b)];
 mkdirSync(outDir, { recursive: true });
 const pgn = resolve(outDir, `${tag}.pgn`);
 if (existsSync(pgn)) rmSync(pgn);
 
-const cmd = [cutechess, ...playerArgs(a), ...playerArgs(b),
+const cmd = [cutechess, ...players,
   "-each", "timemargin=200",
   "-openings", `file=${book}`, "format=epd", "order=random", "plies=16", "-repeat",
   "-games", "2", "-rounds", String(Math.ceil(games / 2)), "-concurrency", String(concurrency),
