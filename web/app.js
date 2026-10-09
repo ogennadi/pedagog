@@ -10,6 +10,8 @@ const FULL_STRENGTH = 10;
 const FULL_STRENGTH_MOVETIME = 1000;     // ms per move at level 10; lower levels are depth-bounded and ignore the clock
 const LEVEL_ELO = [173, 945, 1072, 1195, 1309, 1417, 1553, 1656, 1789, 1894];   // Lichess-classical scale, see COLOPHON.md
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+const STORAGE_KEY = "pedagog-session-v1";
+const SETTING_IDS = ["mode", "colour", "level", "level2", "variant", "position"];
 
 /* ---- Engine: UCI over postMessage. Falls back to running the engine on the main
    thread when the page is opened from file:// in a browser that refuses Workers there. */
@@ -137,6 +139,8 @@ let uciMoves = [];                                // the game so far, in UCI not
 let elapsed = { white: 0, black: 0 }, tickFrom = 0, running = false, paused = false, finished = false;
 let viewPly = null;                               // null = live position, else a ply to display
 let thinking = false, gameId = 0;
+let gameDate = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+let gamePosition = 518;
 
 const colourToMove = () => (game.turn() === "w" ? "white" : "black");
 const isBot = (colour) => players[colour] !== "human";
@@ -157,7 +161,7 @@ function refreshBoard() {
   const live = viewPly === null;
   const history = game.history();
   const shown = live ? history[history.length - 1] : (viewPly > 0 ? history[viewPly - 1] : null);
-  const humanToMove = live && !finished && !isBot(colourToMove());
+  const humanToMove = live && running && !paused && !finished && !isBot(colourToMove());
   cg.set({
     fen: fenAt(viewPly),
     turnColor: colourToMove(),
@@ -192,8 +196,7 @@ function refreshBars() {
 
 function refreshClocks() {
   const fmt = (ms) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
-  const live = { ...elapsed };
-  if (running && !paused && !finished) live[colourToMove()] += performance.now() - tickFrom;
+  const live = liveElapsed();
   const bottom = cg.state.orientation, top = bottom === "white" ? "black" : "white";
   // Only touch the DOM when the text changes: a write per tick would force layout during drags.
   const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
@@ -229,6 +232,7 @@ function viewAt(ply) {
   ply = Math.max(0, Math.min(n, ply));
   viewPly = ply === n ? null : ply;
   refreshAll();
+  saveSession();
 }
 const shownPly = () => (viewPly === null ? game.history().length : viewPly);
 
@@ -242,7 +246,7 @@ function resultText() {
 
 function pgn() {
   const tags = game.header();
-  tags.Event = "Pedagog"; tags.Site = "offline"; tags.Date = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+  tags.Event = "Pedagog"; tags.Site = "offline"; tags.Date = gameDate;
   tags.White = playerName("white"); tags.Black = playerName("black");
   tags.Result = finished ? (game.inCheckmate() ? (colourToMove() === "white" ? "0-1" : "1-0") : "1/2-1/2") : "*";
   if (variant === "chess960") tags.Variant = "Chess960"; else delete tags.Variant;
@@ -261,15 +265,120 @@ function refreshAll() { refreshBoard(); refreshBars(); refreshMoves(); }
 
 function setStatus(text, busy = false) { $("status").textContent = text; $("status").classList.toggle("thinking", busy); }
 
+/* Save the starting position and every move, not just the final FEN: repetition,
+   move browsing, and PGN export all need the original history. */
+function liveElapsed() {
+  const times = { ...elapsed };
+  if (running && !paused && !finished) times[colourToMove()] += performance.now() - tickFrom;
+  return times;
+}
+
+function storageError(action, error) {
+  console.error(`Could not ${action} Pedagog session`, error);
+  $("storage-warning").textContent = `Could not ${action} your saved game: ${error.message}`;
+  $("storage-warning").classList.remove("hidden");
+}
+
+function saveSession() {
+  const settings = Object.fromEntries(SETTING_IDS.map((id) => [id, $(id).value]));
+  if (!settings.position || !$("position").checkValidity()) settings.position = String(gamePosition);
+  const state = {
+    version: 1,
+    settings,
+    game: running || finished ? {
+      variant, position: gamePosition, startFen, moves: game.history().map((m) => m.san),
+      players, elapsed: liveElapsed(), paused, orientation: cg.state.orientation,
+      viewPly, date: gameDate,
+    } : null,
+  };
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    if (!(e instanceof DOMException)) throw e;
+    storageError("save", e);
+  }
+}
+
+function restoreSession() {
+  let raw;
+  try {
+    raw = localStorage.getItem(STORAGE_KEY);
+  } catch (e) {
+    if (!(e instanceof DOMException)) throw e;
+    storageError("load", e);
+    return false;
+  }
+  if (raw === null) return false;
+  try {
+    const state = JSON.parse(raw);
+    const integer = (n, min, max) => Number.isInteger(n) && n >= min && n <= max;
+    const settings = state?.settings;
+    if (state?.version !== 1 || !settings ||
+        !["hvb", "bvb"].includes(settings.mode) ||
+        !["white", "black", "random"].includes(settings.colour) ||
+        !["standard", "chess960"].includes(settings.variant) ||
+        !["level", "level2"].every((id) => typeof settings[id] === "string" && integer(Number(settings[id]), 1, 10)) ||
+        typeof settings.position !== "string" || !integer(Number(settings.position), 0, 959))
+      throw new TypeError("Invalid saved settings");
+    const saved = state.game;
+    let restored, moves;
+    if (saved !== null) {
+      const player = (p) => p === "human" || integer(p, 1, 10);
+      if (!saved || !["standard", "chess960"].includes(saved.variant) ||
+          !integer(saved.position, 0, 959) ||
+          saved.startFen !== (saved.variant === "chess960" ? chess960Fen(saved.position) : START_FEN) ||
+          !Array.isArray(saved.moves) || !saved.moves.every((m) => typeof m === "string") ||
+          !saved.players || !player(saved.players.white) || !player(saved.players.black) ||
+          (saved.players.white === "human" && saved.players.black === "human") ||
+          !saved.elapsed || !["white", "black"].every((c) => Number.isFinite(saved.elapsed[c]) && saved.elapsed[c] >= 0) ||
+          typeof saved.paused !== "boolean" || !["white", "black"].includes(saved.orientation) ||
+          !(saved.viewPly === null || integer(saved.viewPly, 0, saved.moves.length)) ||
+          typeof saved.date !== "string" || !/^\d{4}\.\d{2}\.\d{2}$/.test(saved.date))
+        throw new TypeError("Invalid saved game");
+      restored = new Chess({ fen: saved.startFen, gameVariant: saved.variant });
+      moves = [];
+      for (const san of saved.moves) {
+        if (restored.gameOver()) throw new TypeError("Saved moves continue after the game ended");
+        const move = restored.move(san);
+        if (!move) throw new TypeError("Illegal move in saved game: " + san);
+        moves.push(move.from + move.to + (move.promotion || ""));
+      }
+    }
+    for (const id of SETTING_IDS) $(id).value = settings[id];
+    if (!restored) return false;
+    game = restored; uciMoves = moves;
+    variant = saved.variant; startFen = saved.startFen; gamePosition = saved.position;
+    players = saved.players; elapsed = saved.elapsed; gameDate = saved.date;
+    paused = saved.paused; viewPly = saved.viewPly;
+    finished = game.gameOver(); running = !finished; tickFrom = performance.now();
+    cg.set({ orientation: saved.orientation });
+    updateGameControls();
+    return true;
+  } catch (e) {
+    if (!(e instanceof SyntaxError || e instanceof TypeError || e instanceof RangeError)) throw e;
+    storageError("restore", e);
+    return false;
+  }
+}
+
+function updateGameControls() {
+  const bvb = players.white !== "human" && players.black !== "human";
+  $("pause").classList.toggle("hidden", !bvb || finished || !running);
+  $("pause").textContent = paused ? "Resume" : "Pause";
+  $("start-fen").classList.toggle("hidden", variant !== "chess960");
+  $("start-fen").textContent = variant === "chess960" ? `Position ${gamePosition}: ${startFen}` : "";
+}
+
 /* ---- Playing moves */
 function playMove(move) {
   const result = game.move(move);
   if (!result) return false;
   uciMoves.push(result.from + result.to + (result.promotion || ""));
-  elapsed[result.color === "w" ? "white" : "black"] += performance.now() - tickFrom;
+  if (!paused) elapsed[result.color === "w" ? "white" : "black"] += performance.now() - tickFrom;
   tickFrom = performance.now();
   if (game.gameOver()) { finished = true; running = false; $("pause").classList.add("hidden"); }
   refreshAll();
+  saveSession();
   if (finished) setStatus(resultText());
   else scheduleBot();
   return true;
@@ -277,7 +386,7 @@ function playMove(move) {
 
 async function scheduleBot() {
   const colour = colourToMove();
-  if (finished || paused || thinking || !isBot(colour)) { if (!finished && !thinking) setStatus(isBot(colour) ? "paused" : "your move"); return; }
+  if (!running || finished || paused || thinking || !isBot(colour)) { if (!finished && !thinking) setStatus(isBot(colour) ? "paused" : "your move"); return; }
   thinking = true;
   const id = gameId;
   const level = players[colour];
@@ -287,6 +396,7 @@ async function scheduleBot() {
     await new Promise((r) => setTimeout(r, 400));          // a beat, so book moves do not flash by
     if (id !== gameId) return;
     thinking = false;
+    if (paused) return;
     if (!playMove(book.san)) { console.error("book move rejected", book); setStatus("book move rejected: " + book.san); }
     return;
   }
@@ -295,6 +405,7 @@ async function scheduleBot() {
     const uci = await engine.bestMove({ startFen, moves: uciMoves, level, chess960: variant === "chess960" });
     if (id !== gameId) return;                           // a new game was started meanwhile
     thinking = false;
+    if (paused) return;
     const move = { from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci.length > 4 ? uci[4] : undefined };
     if (!playMove(move)) { console.error("engine move rejected", uci); setStatus("engine move rejected: " + uci); }
   } catch (e) { thinking = false; setStatus("engine error: " + e.message); }
@@ -321,10 +432,14 @@ function onUserMove(from, to) {
 function newGame() {
   gameId++; thinking = false;
   variant = $("variant").value;
-  startFen = variant === "chess960" ? chess960Fen(parseInt($("position").value) || 0) : START_FEN;
+  gamePosition = Math.min(959, Math.max(0, parseInt($("position").value) || 0));
+  $("position").value = gamePosition;
+  startFen = variant === "chess960" ? chess960Fen(gamePosition) : START_FEN;
   game = new Chess({ fen: startFen, gameVariant: variant === "chess960" ? GAME_VARIANT.chess960 : GAME_VARIANT.standard });
   uciMoves = []; elapsed = { white: 0, black: 0 }; tickFrom = performance.now();
   finished = false; paused = false; viewPly = null; running = true;
+  gameDate = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+  $("promotion").classList.add("hidden");
   const mode = $("mode").value, level = parseInt($("level").value), level2 = parseInt($("level2").value);
   if (mode === "bvb") players = { white: level, black: level2 };
   else {
@@ -333,11 +448,9 @@ function newGame() {
     players = human === "white" ? { white: "human", black: level } : { white: level, black: "human" };
     cg.set({ orientation: human });
   }
-  $("pause").classList.toggle("hidden", mode !== "bvb");
-  $("pause").textContent = "Pause";
-  $("start-fen").classList.toggle("hidden", variant !== "chess960");
-  $("start-fen").textContent = variant === "chess960" ? `Position ${$("position").value}: ${startFen}` : "";
+  updateGameControls();
   refreshAll();
+  saveSession();
   scheduleBot();
 }
 
@@ -353,19 +466,40 @@ cg = Chessground($("board"), {
 });
 game = new Chess({ fen: START_FEN });
 
-$("mode").onchange = () => {
+function refreshSettings() {
   const bvb = $("mode").value === "bvb";
   $("colour-row").classList.toggle("hidden", bvb);
   $("level2-row").classList.toggle("hidden", !bvb);
   $("level-row").firstChild.textContent = bvb ? "White bot level " : "Bot level ";
-};
-$("variant").onchange = () => $("position-row").classList.toggle("hidden", $("variant").value !== "chess960");
-$("random-position").onclick = () => { $("position").value = Math.floor(Math.random() * 960); };
-for (const id of ["level", "level2"]) { $(id).oninput = () => { const v = parseInt($(id).value); $(`${id}-out`).textContent = `${v} (≈${LEVEL_ELO[v - 1]})`; }; $(id).oninput(); }
+  $("position-row").classList.toggle("hidden", $("variant").value !== "chess960");
+  for (const id of ["level", "level2"]) {
+    const v = parseInt($(id).value);
+    $(`${id}-out`).textContent = `${v} (≈${LEVEL_ELO[v - 1]})`;
+  }
+}
+for (const id of SETTING_IDS) {
+  $(id).oninput = $(id).onchange = () => {
+    if (id === "position") {
+      if (!$(id).value || !$(id).checkValidity()) return;
+    }
+    refreshSettings();
+    saveSession();
+  };
+}
+$("random-position").onclick = () => { $("position").value = Math.floor(Math.random() * 960); saveSession(); };
 $("new-game").onclick = newGame;
-$("flip").onclick = () => { cg.toggleOrientation(); refreshBars(); };
-$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; if (!paused) { tickFrom = performance.now(); scheduleBot(); } else refreshBars(); };
+$("flip").onclick = () => { cg.toggleOrientation(); refreshBars(); saveSession(); };
+$("pause").onclick = () => {
+  elapsed = liveElapsed(); tickFrom = performance.now();
+  paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause";
+  refreshAll(); saveSession();
+  if (!paused) scheduleBot();
+  else setStatus("paused");
+};
 setInterval(refreshClocks, 250);
+setInterval(() => { if (running && !paused) saveSession(); }, 5000);
+window.addEventListener("pagehide", saveSession);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveSession(); });
 
 // Arrow keys step through the played moves, like clicking them; Home/End jump to the start and
 // back to the live game. Keys typed into the form controls (the sliders use arrows) are left alone.
@@ -379,8 +513,14 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 
+restoreSession();
+refreshSettings();
 refreshAll();
-engine.ready.then(() => setStatus(`engine ready (${engine.mode}) — press New game`)).catch((e) => setStatus("engine failed to load: " + e.message));
+engine.ready.then(() => {
+  if (finished) setStatus(resultText());
+  else if (running) scheduleBot();
+  else setStatus(`engine ready (${engine.mode}) — press New game`);
+}).catch((e) => setStatus("engine failed to load: " + e.message));
 globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines, viewAt, shownPly };   // for the console and tests
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});

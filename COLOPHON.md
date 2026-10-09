@@ -143,6 +143,11 @@ Workers from `file://`, so this build inlines everything and starts the
 engine from a Blob URL, which they do allow — double-click it and it runs
 with the engine off the main thread. Bot time is fixed: levels 1–9 are
 depth-bounded and answer in milliseconds, level 10 thinks for one second.
+Settings and the current or completed game are saved in browser local storage.
+Reopening the same app restores the full move history, PGN, elapsed times,
+board orientation, and pause state; an unpaused game resumes automatically.
+Time spent away from the page is not added on reload. Storage is specific to
+the browser and origin (or local file); it does not sync between devices.
 Vendored: chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1 (MIT),
 cm-pgn 5.0.1 (MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore
 GPL-3; the engine file is independent of it.
