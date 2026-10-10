@@ -54,6 +54,8 @@ const thirdPartyLicenses = [
 const licensePanel = `<details id="third-party-licenses"><summary>Third-party license texts</summary>${thirdPartyLicenses}</details>`;
 
 let html = readFileSync(resolve(root, "index.html"), "utf8");
+html = html.replace(/(src|href)="(web\/icon-\d+\.png)"/g, (_, attribute, path) =>
+  `${attribute}="data:image/png;base64,${readFileSync(resolve(root, path)).toString("base64")}"`);
 html = html.replace(/<link rel="manifest"[^>]*>\s*/g, "");
 html = html.replace(/<link rel="stylesheet"[^>]*>\s*/g, "");
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, "");

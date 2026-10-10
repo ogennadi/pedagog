@@ -6,7 +6,8 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent); }
-header { display: flex; align-items: baseline; gap: 1rem; padding: .5rem .75rem; height: 2.6rem; box-sizing: border-box; overflow: hidden; }
+header { display: flex; align-items: center; gap: 1rem; padding: .5rem .75rem; height: 2.6rem; box-sizing: border-box; overflow: hidden; }
+header .logo { flex: none; width: 24px; height: 24px; }
 header h1 { margin: 0; font-size: 1.25rem; letter-spacing: .08em; flex: none; }
 /* One line, always: if the status wrapped, everything below it (the board!) would jump. */
 .status { color: var(--muted); font-size: .9rem; flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

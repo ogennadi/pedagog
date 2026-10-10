@@ -160,7 +160,7 @@ standalone `pedagog.js` engine is independent of the web dependencies. See
 
 ### Tools
 
-`tools/match.js` (cutechess wrapper; see `README.md` for executable
+`tools/match.js` (cutechess wrapper; see [`tools/README.md`](tools/README.md) for executable
 configuration, seeded runs, fixed `st=1`, and previous-engine comparisons;
 also `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),

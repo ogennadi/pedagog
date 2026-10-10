@@ -1,9 +1,13 @@
 # Pedagog
 
+<img src="logo.png" alt="Pedagog logo" width="160" height="160">
+
 Pedagog is a small, educational chess engine written in JavaScript. It speaks
 UCI and runs under Bun or in the browser. The offline-friendly web app supports
 human-vs-bot and bot-vs-bot play, standard chess and Chess960, and a built-in
 opening book.
+
+[Play Pedagog in your browser](https://oge.nnadi.org/64/pedagog/).
 
 ## Run and build
 
@@ -30,58 +34,60 @@ Run `bun test` and `bun run bundle` before publishing. Attach the generated
 bundle embeds the third-party license texts, and the combined app includes
 GPL-3.0-or-later chessground. Do not commit the generated HTML as source.
 
+## Engine features
+
+Pedagog deliberately favors readable code over maximum strength.
+
+| Area | Implementation |
+|---|---|
+| Board representation | 0x88 mailbox, not bitboards; moves packed into 32-bit integers. |
+| Move generation | Pseudo-legal moves, with legality checked by make/unmake; standard chess and Chess960. |
+| Search | Single-threaded negamax alpha-beta with iterative deepening and captures-first move ordering. |
+| Evaluation | Material and formula-based piece-square tables, tapered between middlegame and endgame; recomputed at each leaf. |
+| Position hashing | Zobrist hashing for repetition detection and deterministic skill-level variation, not a transposition table. |
+| Playing strength | Ten skill levels, with depth limits, deliberate misjudgments, and reduced move vision below full strength. |
+
+**Deliberately omitted:** transposition tables, principal variation search
+(PVS), aspiration windows, null-move and reverse-futility pruning, late move
+reductions (LMR), killer and history heuristics, check extensions, quiescence
+search, delta pruning, MVV-LVA capture ranking, and incremental evaluation.
+The evaluation uses neither PeSTO tables nor a neural network. These choices
+keep the engine small and educational; see the
+[COLOPHON](COLOPHON.md#what-was-deliberately-left-out) for the historical
+measurements behind the search simplifications.
+
+The browser app supplies an opening book; the standalone engine has none.
+
+## UCI options
+
+Send `uci` to list the engine's options, and configure them with
+`setoption name <option> value <value>`.
+
+| Option | Default | Allowed values | Effect |
+|---|---|---|---|
+| `Hash` | `16` | `1`–`1024` | Accepted for GUI compatibility, but ignored: there is no transposition table. |
+| `Threads` | `1` | `1` | Accepted for GUI compatibility; the engine is always single-threaded. |
+| `UCI_Chess960` | `false` | `true`, `false` | Enables Chess960 castling notation (king moves to the rook's square). Supply the starting position with `position fen`. |
+| `Skill_Level` | `10` | `1`–`10` | Sets playing strength: 1 picks a random legal move (taking mate in one when available), 2–9 use progressively stronger weakened play, and 10 is full strength. |
+| `Skill_Seed` | `0` | `0`–`2147483647` | Selects a deterministic weakened opponent; 0 uses the built-in seed. Has no effect at full strength. |
+
+For example, after starting the engine with `bun run start`, send:
+
+```text
+uci
+setoption name Skill_Level value 5
+setoption name Skill_Seed value 42
+isready
+position startpos
+go movetime 1000
+```
+
 ## Calibration and analysis
 
-Match tools require Bun. `tools/match.js` wraps
-[cutechess-cli](https://github.com/cutechess/cutechess), and Maia matches also
-require `lc0` plus Maia network files. `tools/blunders.py` needs
-`python-chess`; `tools/plot.py` needs Matplotlib. Set executable locations
-using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, and `STOCKFISH`, or pass paths on the
-command line where supported. Maia weights default to `tools/models/`.
-
-```sh
-bun run match L10 L10 2 --time 0.02 --seed 42 --concurrency 1 --tag release-smoke-20261009
-bun run match L7 maia-1900 20 --seed 42 --tag l7-vs-maia-r1
-```
-
-The first command is a short plumbing smoke test, not a strength measurement.
-`--time 1` uses cutechess's fixed per-move `st=1` limit for Pedagog, matching
-the browser's full-strength one-second move budget; without it L10 uses
-10+0.1 and lower levels use the existing infinite-clock/depth-limited setup.
-`L10@6` remains available for fixed-depth tests. `--engine PATH` chooses the
-current source. Compare an earlier engine explicitly with e.g.
-`bun run match prev:L10 L10 20 --previous-engine path/to/old/pedagog.js
---time 1 --seed 42 --tag old-vs-current-20261009`.
-
-Every match writes a PGN and a same-tag JSON metadata file under `tools/out/`.
-Metadata records the wrapper invocation and exact cutechess argument vector,
-result, seed, opening-book hash, engine/tool/runtime hashes, Git revision/dirty
-status, runtime, and available CPU concurrency. Opening selection uses
-cutechess's seeded random order (`-srand`); use `--concurrency 1` when
-repeatable scheduling matters. Outputs
-are never replaced unless `--force` is explicitly supplied; use a new tag for
-each run. Match summaries are no longer appended to a shared history file.
-
-Fit Elo only against an explicitly chosen PGN set. The tool intentionally does
-not glob all historical matches:
-
-```sh
-bun tools/elo.js --anchor maia-1900=1755 --json tools/out/elo-preview.json \
-  tools/out/r9-L2-vs-maia-1900.pgn tools/out/r9-L3-vs-maia-1900.pgn
-python tools/blunders.py --out tools/out/blunders-preview.json \
-  tools/out/r9-L2-vs-L1.pgn
-python tools/plot.py --elo tools/out/elo-preview.json --blunders tools/out/blunders-preview.json \
-  --out tools/out/skill-curve-preview.png
-```
-
-The published Elo ratings use exactly the 30 round-9 PGNs archived in
-[`docs/calibration-baseline/`](docs/calibration-baseline/). Extract those files
-and pass them explicitly to reproduce the fit; the archive manifest lists
-every input hash and the dataset's 8,900 games. The plot also includes
-`docs/blunders.json`, which does not record its source PGN list, so this archive
-is not asserted to reproduce those blunder-rate values. Historical tuning PGNs
-are not mixed into the published Elo baseline. See
-[`COLOPHON.md`](COLOPHON.md) for the measurement method and interpretation.
+See [`tools/README.md`](tools/README.md) for match setup and analysis commands,
+the [calibration archive](docs/calibration-baseline/README.md) for reproducing
+the published Elo fit, and [`COLOPHON.md`](COLOPHON.md) for the measurement
+method and interpretation.
 
 ## Licensing
 
