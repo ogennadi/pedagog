@@ -41,6 +41,17 @@ const appJs = await result.outputs[0].text();
 const css = ["chessground/chessground.base.css", "chessground/chessground.brown.css", "chessground/chessground.cburnett.css"]
   .map((f) => readFileSync(resolve(vendor, f), "utf8")).join("\n") + "\n" + readFileSync(resolve(root, "web", "app.css"), "utf8");
 const engine = readFileSync(resolve(root, "pedagog.js"), "utf8");
+const thirdPartyLicenses = [
+  ["chessground", "web/vendor/chessground/LICENSE"],
+  ["chess.mjs", "web/vendor/chess.mjs/LICENSE"],
+  ["cm-chess", "web/vendor/cm-chess/LICENSE"],
+  ["cm-pgn", "web/vendor/cm-pgn/LICENSE"],
+].map(([name, path]) => {
+  const license = readFileSync(resolve(root, path), "utf8");
+  const escaped = license.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<section><h3>${name}</h3><pre>${escaped}</pre></section>`;
+}).join("\n");
+const licensePanel = `<details id="third-party-licenses"><summary>Third-party license texts</summary>${thirdPartyLicenses}</details>`;
 
 let html = readFileSync(resolve(root, "index.html"), "utf8");
 html = html.replace(/<link rel="manifest"[^>]*>\s*/g, "");
@@ -49,6 +60,9 @@ html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, "");
 html = html.replace("</head>", `<style>\n${css}\n</style>\n</head>`);
 html = html.replace(/<script type="module" src="web\/app.js"><\/script>/,
   `<script>globalThis.PEDAGOG_ENGINE_SOURCE = ${JSON.stringify(engine)};</script>\n<script>\n${appJs}\n</script>`);
+html = html.replace('<a href="THIRD_PARTY_NOTICES.md">Third-party license notices</a>',
+  '<a href="#third-party-licenses">Third-party license notices</a>');
+html = html.replace("</body>", `${licensePanel}\n</body>`);
 html = html.replace("Works offline once loaded.", "This is the single-file build: it works from a local file, no server needed.");
 
 const out = resolve(root, "pedagog-app.html");

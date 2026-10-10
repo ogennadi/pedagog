@@ -1,0 +1,160 @@
+{
+  "dataset": "Pedagog skill-curve round 9 baseline",
+  "source_pattern": "tools/out/r9-*.pgn",
+  "archive": "round-9-pgns.zip",
+  "archive_sha256": "e443e6ef688a6d2e96ebba379e65d294396e8a8bd1fee0338a743ff896886d96",
+  "pgn_files": 30,
+  "games": 8900,
+  "files": [
+    {
+      "path": "tools/out/r9-L10-vs-L9.pgn",
+      "games": 300,
+      "sha256": "4239f5e66cae7efef50edc6b48cff23976e5ff642c9b6119287d7b61aaa54c0b"
+    },
+    {
+      "path": "tools/out/r9-L10-vs-maia-1900.pgn",
+      "games": 200,
+      "sha256": "b15d0714dbeae35d708587937187f42d2c1d133a13a9fe74868a33c352d5c8f3"
+    },
+    {
+      "path": "tools/out/r9-L2-vs-L1.pgn",
+      "games": 300,
+      "sha256": "ea0a0a57f712c921fa43e5e7bb5087e21b785c04c3d1dc937293bd6a5edd2bda"
+    },
+    {
+      "path": "tools/out/r9-L2-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "32eeba6fc2d0f64b9cb7b0ecc44b1fd3375591a1c2d2f22d1ba1987087edf68d"
+    },
+    {
+      "path": "tools/out/r9-L2-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "f296d0f5efeee396ac3f0dfb0c555fde86a14d8b440c67587c40b3fa5d748199"
+    },
+    {
+      "path": "tools/out/r9-L3-vs-L2.pgn",
+      "games": 300,
+      "sha256": "d327fa5ce7c45f00be905856c9f7406b102279d5508e1c3b4dc6a80ee0c52564"
+    },
+    {
+      "path": "tools/out/r9-L3-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "fe58a67eb8c9441fff59a3f3326be4f6c362026efa0844e0bfdee8c104e3eb9a"
+    },
+    {
+      "path": "tools/out/r9-L3-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "bbd6691ce4b7187bb04780df7afcf9053fe959c96fe1e7f4b4dc31fa1e7d8bc1"
+    },
+    {
+      "path": "tools/out/r9-L4-vs-L3.pgn",
+      "games": 300,
+      "sha256": "ee12f8392e4404d2c31480b0353c952b79294fcb83dc6ffee3a42acf26e1ca01"
+    },
+    {
+      "path": "tools/out/r9-L4-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "89a35bffe04eb746786f8a6dadf1d19dfc39b252c3c53dd43a7f2e13cda0b78a"
+    },
+    {
+      "path": "tools/out/r9-L4-vs-maia-1500.pgn",
+      "games": 300,
+      "sha256": "b4eb058235f2dbd5fd75b20ef1d126d3a98aef5adc0e71acae033cb2d802824b"
+    },
+    {
+      "path": "tools/out/r9-L4-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "f27913f8d06d6c7907ff0d3921f543dd4c074dbee538963de22da53cb3618207"
+    },
+    {
+      "path": "tools/out/r9-L5-vs-L4.pgn",
+      "games": 300,
+      "sha256": "fdb7bd010b0a145b363a5808c7f93a99c024d9fa6488676354c15b648464109f"
+    },
+    {
+      "path": "tools/out/r9-L5-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "10adf32bc06b25c7587f30df058c642e2152baec23b3c3dfae7067a5ffc81d53"
+    },
+    {
+      "path": "tools/out/r9-L5-vs-maia-1500.pgn",
+      "games": 300,
+      "sha256": "229297727f0b68bf33d5ff0326168dd21c124a5662fba67bc2d083dbb0d84af1"
+    },
+    {
+      "path": "tools/out/r9-L5-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "0cfa20262b08e6a9fee94801a13b4c32ec890c48e5c39b648cebf09ea8b98276"
+    },
+    {
+      "path": "tools/out/r9-L6-vs-L5.pgn",
+      "games": 300,
+      "sha256": "fa3e80ce89265d5f5244421e9699dc408e5cc677aec6889241ac6dfa78f73592"
+    },
+    {
+      "path": "tools/out/r9-L6-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "0624abb6a902b3596dcdb1411822ebe98195667374a4839c1cea7b5daf03b6c6"
+    },
+    {
+      "path": "tools/out/r9-L6-vs-maia-1500.pgn",
+      "games": 300,
+      "sha256": "7b8099929d5b0e7918d8cebe2c46972fe1048ad45cfcaf4ade98836578ec6d9f"
+    },
+    {
+      "path": "tools/out/r9-L6-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "b1bdc4ff90fd815aa333b29e55fb96c0bade8165d72a0ce616bd2f43e432e9a5"
+    },
+    {
+      "path": "tools/out/r9-L7-vs-L6.pgn",
+      "games": 300,
+      "sha256": "eac757cdbd06133f1fca76a04eb63af81a50023d9854abb793dcc7c860803d63"
+    },
+    {
+      "path": "tools/out/r9-L7-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "9db36d2aff973535913f71703c98adc64795223dfad36418bb89a53e8172f8b3"
+    },
+    {
+      "path": "tools/out/r9-L7-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "639ca2274ebb5984fbf525ce3298e2d27289d7fa73f17a5ae94fbac12346aaa7"
+    },
+    {
+      "path": "tools/out/r9-L8-vs-L7.pgn",
+      "games": 300,
+      "sha256": "7400a5692553c0342eba669ea2bcde698af2521cf091fbad9c032c49dbd045cc"
+    },
+    {
+      "path": "tools/out/r9-L8-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "a12f918ad370a54c4e17a47d149f7e6bb2b272adbb4ccbbe1172ffa1e5523244"
+    },
+    {
+      "path": "tools/out/r9-L8-vs-maia-1500.pgn",
+      "games": 300,
+      "sha256": "75f1863fbb9a94c4f8a48fb65e296803ded5957c26fdc795ad329d4e994f2d32"
+    },
+    {
+      "path": "tools/out/r9-L8-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "e4cae7a44e8e55b6789f46047fbf1a9836cc2e2e791ce3cc7d03cd9cfebc28a3"
+    },
+    {
+      "path": "tools/out/r9-L9-vs-L8.pgn",
+      "games": 300,
+      "sha256": "37c79a488aa88fea6d0d8f8f30b7be2cc7e63135300bdf64e9b5f3ad87998250"
+    },
+    {
+      "path": "tools/out/r9-L9-vs-maia-1100.pgn",
+      "games": 300,
+      "sha256": "dd5026c05464c59f09dff253d128f5681b8e9459017483d6bb8ed9985fdb9c6d"
+    },
+    {
+      "path": "tools/out/r9-L9-vs-maia-1900.pgn",
+      "games": 300,
+      "sha256": "9b45a15479571be9b5cc05f8fc969421c13e21bcb29148e87d6ac03e93680bc6"
+    }
+  ]
+}

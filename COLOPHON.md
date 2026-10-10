@@ -35,7 +35,7 @@ one before and versions 5–7 against Maia-1900, on the Lichess classical scale:
 | 1 | random legal move | ~400 | — |
 | 2 | greedy: one ply, counting material | ~420 | 14-0-186 — it wins all the material and then cannot deliver mate, because at one ply it never sees the reply that would tell it the king is mated |
 | 3 | minimax to depth 3 | 1186 | 200-0-0 |
-| 4 | alpha-beta | 1177 | 98-98-4 — it plays the *same moves* as minimax (the test that proves the cutoff correct); its speed is worth nothing until there is a clock |
+| 4 | alpha-beta | 1177 | 98-98-4 — it plays the *same moves* as minimax; its speed is worth nothing until there is a clock |
 | 5 | iterative deepening on the clock | 1618 | +486 — the speed cashed in: depth 5–6 instead of 3 at 10+0.1 |
 | 6 | captures first | 1790 | +238 |
 | 7 | piece-square tables (and the taper) | 1906 | +149; matches level 10's 1894 from the skill ladder |
@@ -77,7 +77,9 @@ all others depth-bounded; `tools/elo.js` fits one rating to all results
 scale is anchored on **Maia-1900 = 1755**, the Lichess classical rating of
 the bot that runs that network (`maia9`: 1755, RD 45, 141,012 games on
 2026-10-06), so the numbers below read as Lichess classical ratings. Nine
-tuning rounds; the final data are in `docs/skill-curve.json`. Note that the
+tuning rounds; the published fit uses round 9 only, archived with per-file
+hashes under `docs/calibration-baseline/`. The resulting ratings are in
+`docs/skill-curve.json`. Note that the
 three Maias span only ~220 Elo against engines (1538 / 1670 / 1755 here),
 whatever their training labels say.
 
@@ -148,19 +150,24 @@ Reopening the same app restores the full move history, PGN, elapsed times,
 board orientation, and pause state; an unpaused game resumes automatically.
 Time spent away from the page is not added on reload. Storage is specific to
 the browser and origin (or local file); it does not sync between devices.
-Vendored: chessground 9.2.1 (GPL-3.0-or-later), cm-chess 4.0.1 (MIT),
-cm-pgn 5.0.1 (MIT), chess.mjs 2.4.2 (BSD-2). The web app is therefore
-GPL-3; the engine file is independent of it.
+The checked-in vendor license texts identify chessground as GPL-3.0-or-later,
+chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
+app and single-file bundle include chessground and are distributed under
+GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
+to CC0 separately. The
+standalone `pedagog.js` engine is independent of the web dependencies. See
+`LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
 
 ### Tools
 
-`tools/match.js` (cutechess wrapper: `bun run match L7 maia-1500 300`;
+`tools/match.js` (cutechess wrapper; see `README.md` for executable
+configuration, seeded runs, fixed `st=1`, and previous-engine comparisons;
 also `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
 `tools/plot.py` (the figure), `tools/serve.js` (static server with the
 cross-origin-isolation headers), `tools/bundle.js` (the single-file app).
-Match PGNs land in
-`tools/out/` (ignored).
+Match PGNs and metadata land in `tools/out/` (ignored). Each run has an
+independent tag; existing files are not overwritten by default.
 
 ### The Part II brief
 
@@ -277,19 +284,14 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
 - `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler.
 - `docs/` — `skill-curve.png`, `skill-curve.json`, `blunders.json`.
-- `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`.
+- `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`, `bun run bundle`, `bun run match`, `bun run elo`.
 
-Run `bun test` for the engine tests in `tests/`, using an isolated VM harness
-without adding production exports. Frozen fixtures from the original full
-engine compare deterministic search transcripts (scores, PVs, nodes,
-best moves, excluding time, NPS and the retired ponder hint): twelve bench positions
-at depth 3 and all ten skills with seeds 0 and 42. MultiPV has been removed;
-the engine searches one best line while retaining skill weakening. The fixed
-`multipv 1` output field preserves the original single-line transcript. The depth-5
-bench total is pinned at 1,310,439 nodes. Tests also exercise UCI, fake-clock
-timing and stop handling, search edge branches, evaluation, perft and
-make/unmake restoration. These are regression checks, not exhaustive
-coverage or a substitute for empirical Elo calibration.
+The original development suite used an isolated VM harness and frozen
+transcript fixtures to exercise search, UCI, fake-clock timing, evaluation,
+perft, and make/unmake behavior. Those additional unit tests and fixtures have
+since been removed. The retained `bun test` suite runs `tests/rules.test.js`,
+which checks move legality, state restoration, draw detection, and perft; it
+does not claim current search or UCI regression coverage.
 
 Verification done during the session: perft to depth 4–5 on six standard
 positions and eight Chess960 positions (all 58 node counts correct, ~10 M

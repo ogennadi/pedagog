@@ -1,6 +1,6 @@
 """Blunder rate per skill level, judged by Stockfish.
 
-    python tools/blunders.py [--depth 12] [--games-per-level 60] [--out docs/blunders.json] [pgn files...]
+    python tools/blunders.py [--engine PATH] [--depth 12] [--games-per-level 60] [--out docs/blunders.json] [pgn files...]
 
 Assumptions (stated so they can be argued with):
   * The judge is Stockfish at a fixed depth (default 12), evaluating the position before and
@@ -18,7 +18,6 @@ Assumptions (stated so they can be argued with):
 import argparse, glob, json, math, os, sys
 import chess, chess.engine, chess.pgn
 
-STOCKFISH = r"C:\Program Files\stockfish\stockfish.exe"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def win_pct(cp):
@@ -26,6 +25,8 @@ def win_pct(cp):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--engine", default=os.environ.get("STOCKFISH", "stockfish"),
+                    help="Stockfish UCI executable (default: STOCKFISH or stockfish on PATH)")
     ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--games-per-level", type=int, default=60)
     ap.add_argument("--levels", default="", help="comma-separated levels to judge (default: all found)")
@@ -65,7 +66,7 @@ def main():
                     if name.startswith("L") and name[1:].isdigit() and (not wanted or int(name[1:]) in wanted):
                         per_level.setdefault(int(name[1:]), []).append((game, colour == "White"))
 
-    engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH)
+    engine = chess.engine.SimpleEngine.popen_uci(a.engine)
     engine.configure({"Threads": 1, "Hash": 64})
     limit = chess.engine.Limit(depth=a.depth)
 

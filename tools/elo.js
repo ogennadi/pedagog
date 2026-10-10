@@ -1,4 +1,4 @@
-// Fit Elo ratings to all games in tools/out/*.pgn (or the PGNs given on the command line).
+// Fit Elo ratings to only the explicitly supplied PGNs; do not mix calibration rounds by default.
 //
 //   bun tools/elo.js [--anchor maia-1900=1755] [--anchor-note "..."] [--only L,maia] [--json docs/skill-curve.json] [files...]
 //
@@ -8,7 +8,7 @@
 // from a bootstrap over games. The default anchor is Maia-1900 at 1755, the Lichess classical
 // rating of the bot that runs that network (maia9, RD 45 over 141,012 games) on 2026-10-06.
 
-import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 
 const here = dirname(Bun.main);
@@ -19,7 +19,12 @@ const anchorNote = opt("--anchor-note", "its Lichess classical rating on 2026-10
 const only = opt("--only", "").split(",").filter(Boolean);
 const jsonOut = opt("--json", "");
 let files = args.filter((x, i) => !x.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
-if (files.length === 0) files = readdirSync(resolve(here, "out")).filter((f) => f.endsWith(".pgn")).map((f) => resolve(here, "out", f));
+if (files.length === 0) {
+  console.error("Pass the PGN files to fit explicitly; refusing to combine every historical file in tools/out.");
+  console.error("Example: bun tools/elo.js --anchor maia-1900=1755 tools/out/r9-L2-vs-L1.pgn ...");
+  process.exit(2);
+}
+files = [...new Set(files.map((file) => resolve(file)))];
 
 // ---- Collect games: [white, black, score for white]
 const games = [];
