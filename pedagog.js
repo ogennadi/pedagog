@@ -279,9 +279,14 @@ function orderMoves(pos, moves) {
    Turn the numbers of a UCI "go" command into search limits for the
    side to move: { depth, nodes, softMs, hardMs }. Two time budgets:
    a soft one (do not start another depth after it) and a hard one
-   (abort the search). Below full strength the clock is ignored: a
-   level is a depth, never a time budget, so it plays the same on any
-   machine. */
+   (abort the search). The first second of the clock is a reserve
+   that is never planned for: the GUI's clock also counts delays the
+   search cannot see (passing messages, other programs, garbage
+   collection), and a player that lives on its increment loses on
+   time to the first such hiccup. Below the reserve only part of the
+   increment is spent, so the clock climbs back. Below full strength
+   the clock is ignored: a level is a depth, never a time budget, so
+   it plays the same on any machine. */
 function limitsFor(go, side, level) {
   const untimed = {
     depth: go.depth || MAX_PLY, nodes: go.nodes || 0,
@@ -297,8 +302,9 @@ function limitsFor(go, side, level) {
   if (time === undefined) return untimed;
   const inc = (side === WHITE ? go.winc : go.binc) || 0;
   const movesToGo = go.movestogo || 30;
-  const softMs = Math.max(1, time / movesToGo + 0.75 * inc - overhead);
-  const hardMs = Math.max(1, Math.min(4 * softMs, 0.8 * time - overhead));
+  const usable = Math.max(0, time - 1000); // the first second is the reserve
+  const softMs = Math.max(1, usable / movesToGo + 0.75 * inc - overhead);
+  const hardMs = Math.max(1, Math.min(2 * softMs, usable / 4 + 0.75 * inc - overhead));
   return { ...untimed, softMs, hardMs };
 }
 

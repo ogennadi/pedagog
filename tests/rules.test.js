@@ -191,6 +191,12 @@ test("limitsFor is a pure translation of go numbers", () => {
   expect(e.read("limitsFor({ movetime: 1000 }, WHITE, 5).hardMs")).toBe(Infinity);
   expect(e.read("limitsFor({ wtime: 60000, btime: 1000 }, BLACK, SKILL_MAX).hardMs"))
     .toBe(e.read("limitsFor({ wtime: 1000 }, WHITE, SKILL_MAX).hardMs"));
+  // A search that runs to its hard limit never takes the clock below the
+  // one-second reserve, and below the reserve it gains on the increment.
+  for (const time of [200, 1000, 1500, 3000, 10000, 60000]) {
+    const hard = e.read(`limitsFor({ wtime: ${time}, winc: 100 }, WHITE, SKILL_MAX).hardMs`);
+    expect(time + 100 - hard).toBeGreaterThanOrEqual(Math.min(1000, time));
+  }
 });
 
 test("UCI session: options and positions carry over between commands", () => {
