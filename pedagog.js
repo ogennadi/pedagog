@@ -342,6 +342,16 @@ const FULL_VISION = 1024;
 const VISION_SLOPE = 16, VISION_FLOOR = 160;
 // Vision lost per ply, and its minimum.
 
+/* Hashing constants, here and in S5. The two multipliers were chosen
+   for how well they scramble bits. The seeds and the salt are
+   arbitrary (any distinct nonzero values would do), but changing any
+   of them changes which positions each skill level misjudges. */
+const GOLDEN = 0x9E3779B9;          // 2^32 / golden ratio (Fibonacci hashing)
+const MIX_MULTIPLIER = 0x45d9f3b;   // from a well-known 32-bit integer hash
+const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0
+const DEPTH_SALT = 0xA5A55A5A;      // keeps the depth draw apart from the others
+const ZOBRIST_SEED = 0x2545F491;    // starts the key generator in S5
+
 const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
   ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
 
@@ -375,7 +385,7 @@ function skillFor(level, seed) {
     ...(LADDER[clamped - 1] || LADDER[SKILL_MAX - 1]),
     level: clamped,
     seed: seedInt,
-    seedKey: mix32(seedInt === 0 ? 0x9E3779B9 : seedInt),
+    seedKey: mix32(seedInt === 0 ? BUILT_IN_SEED : seedInt),
   });
 }
 
@@ -383,7 +393,7 @@ function skillFor(level, seed) {
    rung's share of positions, decided by the hash. */
 function skillDepth(pos, skill) {
   if (skill.deeperPermille === 0) return skill.depth;
-  const hash = mix32(keyLow(pos.key) ^ skill.seedKey ^ 0xA5A55A5A);
+  const hash = mix32(keyLow(pos.key) ^ skill.seedKey ^ DEPTH_SALT);
   return skill.depth + (hash % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
@@ -399,7 +409,7 @@ function judge(pos, skill) {
    not from evaluate(). */
 function blunder(pos, skill) {
   if (skill.blunderWindow === 0) return 0;
-  const hash = mix32(keyLow(pos.key) ^ Math.imul(keyHigh(pos.key), 0x9E3779B9) ^ skill.seedKey);
+  const hash = mix32(keyLow(pos.key) ^ Math.imul(keyHigh(pos.key), GOLDEN) ^ skill.seedKey);
   if (hash % 1000 >= skill.blunderPermille) return 0;
   return (mix32(hash) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
 }
@@ -410,7 +420,7 @@ function blunder(pos, skill) {
 function seesMove(after, skill, move, ply) {
   if (skill.vision >= FULL_VISION) return true;
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
-  const hash = mix32(keyLow(after.key) ^ Math.imul(move, 0x9E3779B9) ^ skill.seedKey);
+  const hash = mix32(keyLow(after.key) ^ Math.imul(move, GOLDEN) ^ skill.seedKey);
   if (((hash >>> 20) & 1023) < chance) return true;
   const easy = after.captured !== EMPTY || moveFlag(move) === FLAG_EP || inCheck(after);
   return easy && ((hash >>> 8) & 1023) < chance;
@@ -438,8 +448,8 @@ function givesMate(pos, move) {
 
 /* A 32-bit integer hash finaliser (two multiply-xorshift rounds). */
 function mix32(x) {
-  const a = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  const b = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  const a = Math.imul(x ^ (x >>> 16), MIX_MULTIPLIER);
+  const b = Math.imul(a ^ (a >>> 16), MIX_MULTIPLIER);
   return (b ^ (b >>> 16)) >>> 0;
 }
 
@@ -953,7 +963,7 @@ function zobristKeys(seed) {
   return { zobPiece, zobCastle, zobEp, zobSide };
 }
 
-const { zobPiece, zobCastle, zobEp, zobSide } = zobristKeys(0x2545F491);
+const { zobPiece, zobCastle, zobEp, zobSide } = zobristKeys(ZOBRIST_SEED);
 
 /* A key's low 32 bits and the bits above them, as 32-bit integers,
    for the skill levels' hashing (S2). */
