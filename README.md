@@ -18,7 +18,7 @@ repository root:
 bun run start                 # UCI engine; interact through stdin/stdout
 bun run bench                 # built-in engine benchmark
 bun run perft                 # built-in perft command
-bun test                      # retained rules and perft tests
+bun test                      # rules, perft and basic search/UCI tests
 bun run web                   # http://localhost:8080
 bun run bundle                # creates pedagog-app.html
 ```
@@ -36,7 +36,9 @@ GPL-3.0-or-later chessground. Do not commit the generated HTML as source.
 
 ## Engine features
 
-Pedagog deliberately favors readable code over maximum strength.
+Pedagog deliberately favors readable code over maximum strength. Each
+function takes what it needs as arguments and returns what it finds, so it can
+be read on its own; only `makeMove` and `unmakeMove` change a position in place.
 
 | Area | Implementation |
 |---|---|

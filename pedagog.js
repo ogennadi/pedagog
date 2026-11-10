@@ -24,6 +24,19 @@
    way Gaia does: it looks less far ahead, misjudges some positions
    on purpose, and overlooks some moves entirely (see COLOPHON.md
    for the measured ladder).
+
+   HOW TO READ IT
+   Every function names what it needs in its parameters and hands
+   back what it found as its return value, so each one can be read
+   on its own page. There are no module-level variables that change
+   while the engine runs; the only `let`s outside a function belong
+   to the I/O code at the very end.
+
+   One deliberate exception: a position (S4) is changed in place by
+   makeMove() and undone by unmakeMove(). The search visits millions
+   of positions, and copying a board for each would cost much of its
+   speed. Every other function that receives a position either only
+   reads it, or makes and unmakes moves and hands it back unchanged.
 ================================================================
 
    TABLE OF CONTENTS
@@ -34,7 +47,7 @@
    S3  Evaluation          A naive piece-square evaluation
    S4  Chess Rules         Position, make/unmake, draws, moves, attacks
    S5  Zobrist Hashing     Position keys for repetition detection
-   S6  UCI                 Options (next to "uciok"), bench, perft, I/O
+   S6  UCI                 Sessions, options, bench, perft, I/O
 ================================================================
 */
 
@@ -85,7 +98,6 @@ const ROOK = 4, QUEEN = 5, KING = 6;
 const PIECE_CHARS = ".PNBRQK..pnbrqk";
 
 const MAX_PLY = 100;              // longest line the search will follow
-const MAX_MOVES = 256;            // a position never has more moves than this
 const INF = 32500;
 const MATE = 32000;               // mate in N plies scores MATE - N
 const MATE_IN_MAX = MATE - MAX_PLY;
@@ -120,14 +132,22 @@ const now = () => performance.now();
    "horizon effect", and the score swings between odd and even
    depths.)
 
-   think()     iterative deepening: depth 1, 2, 3, ... until time
-               runs out. We always have a complete answer from the
-               last finished depth.
-   search()    negamax alpha-beta. Alpha is the best score the side
+   think(pos, limits, skill, io)
+               iterative deepening: depth 1, 2, 3, ... until a limit
+               is reached. Returns the result of the last finished
+               depth, so there is always a complete answer.
+   search(alpha, beta, depth, ply)
+               negamax alpha-beta. Alpha is the best score the side
                to move is already assured of, beta the best the
                opponent will allow. A move scoring >= beta is "too
                good": the opponent would never let us get here, so
                the remaining moves need not be looked at (a cutoff).
+               Returns { score, pv }: the score and the line of best
+               play (principal variation) that produces it.
+
+   search() is written inside think(): everything it uses besides
+   its four arguments (the position, the skill, the node count and
+   the stop flag) is declared a few lines above it, in think().
 
    Scores are always from the point of view of the side to move
    (negamax): +100 means "the side to move is a pawn up". A child's
@@ -135,169 +155,151 @@ const now = () => performance.now();
    one side is bad for the other.
 */
 
-let nodes = 0, stopped = false, rootDepth = 0;
-let startTime = 0, timeSoft = 0, timeHard = 0, nodeLimit = 0;
-let depthLimit = MAX_PLY;
-let stopFlag = null; // Atomics shares stop requests with the input thread.
+const NO_LINE = Object.freeze([]);
 
-// One slice of moves per ply.
-const moveStack = new Int32Array((MAX_PLY + 2) * MAX_MOVES);
+/* Choose a move for `pos` within `limits` (from limitsFor()), playing
+   as `skill` (from skillFor()). `io` supplies the clock, `now()`; a
+   stop request, `shouldStop()`; and `onInfo(result)`, called after
+   every finished depth. Returns { bestMove, depth, score, nodes,
+   elapsed, pv }; bestMove is 0 when there is no legal move. The
+   position is searched in place and handed back unchanged. */
+function think(pos, limits, skill, io) {
+  const startTime = io.now();
+  const rootMoves = legalMoves(pos);
+  if (rootMoves.length === 0)
+    return { bestMove: 0, depth: 0, score: 0, nodes: 0, elapsed: 0, pv: [] };
 
-const pvTable = new Int32Array(MAX_PLY * MAX_PLY); // triangular PV table
-const pvLength = new Int32Array(MAX_PLY);
-const rootSkipped = []; // root moves overlooked by skill vision
-
-/* Search one best line at increasing depths. Keep the best move from
-   the last completed depth; an interrupted search cannot replace it. */
-function think() {
-  startTime = now();
-  nodes = 0;
-  stopped = false;
-  rootDepth = 0;
-  if (skillLevel === 1) {
-    playRandomly();
-    return;
+  if (skill.level === 1) {
+    const move = randomMove(pos, skill, rootMoves);
+    const result = {
+      bestMove: move, depth: 1, score: 0,
+      nodes: rootMoves.length, elapsed: 0, pv: [move],
+    };
+    io.onInfo(result);
+    return result;
   }
 
-  const rootMoves = legalMoves();
-  if (rootMoves.length === 0) {
-    out("bestmove 0000");
-    return;
-  }
-  const unseen = overlookedRootMoves(rootMoves);
-  const maxDepth = Math.min(depthLimit, skillDepth());
-  rootSkipped.length = 0;
-  rootSkipped.push(...unseen);
+  const unseen = overlookedRootMoves(pos, skill, rootMoves);
+  const maxDepth = Math.min(limits.depth, skillDepth(pos, skill));
+  let nodes = 0, stopped = false, rootDepth = 0;
+  let best = {
+    bestMove: rootMoves.find((move) => !unseen.includes(move)),
+    depth: 0, score: 0, nodes: 0, elapsed: 0, pv: [],
+  };
 
-  let bestMove = rootMoves.find((move) => !unseen.includes(move));
   for (let depth = 1; depth <= maxDepth; depth++) {
     rootDepth = depth;
-    const score = search(-INF, INF, depth, 0);
-    if (stopped) break;
-    bestMove = pvTable[0];
-    report(depth, score);
-    if (now() - startTime > timeSoft) break;
+    const { score, pv } = search(-INF, INF, depth, 0);
+    if (stopped) break; // an interrupted depth cannot replace `best`
+    best = {
+      bestMove: pv[0], depth, score, nodes,
+      elapsed: io.now() - startTime, pv,
+    };
+    io.onInfo(best);
+    if (best.elapsed > limits.softMs) break;
   }
-  out("bestmove " + moveToUci(bestMove));
-}
+  return { ...best, nodes };
 
-/* Negamax to a fixed depth: terminate, try moves, keep the best line,
-   and stop at a beta cutoff. Every successful make has an unmake,
-   including overlooked moves and interrupted searches. */
-function search(alpha, beta, depth, ply) {
-  pvLength[ply] = ply;
-  nodes++;
-  if ((nodes & 1023) === 0) checkLimits();
-  if (stopped) return 0;
-  if (ply > 0 && isDraw()) return DRAW;
-  if (depth === 0 || ply >= MAX_PLY - 1)
-    return evaluate(); // a leaf: ask the evaluation
+  /* Checked every 1024 nodes from depth 2 on: the first depth always
+     finishes, so there is always a move to play. */
+  function limitReached() {
+    return (limits.nodes > 0 && nodes >= limits.nodes) ||
+      io.now() - startTime >= limits.hardMs ||
+      io.shouldStop();
+  }
 
-  const first = ply * MAX_MOVES;
-  const last = generateMoves(first);
-  orderMoves(first, last);
+  /* Negamax to a fixed depth: terminate, try moves, keep the best line,
+     and stop at a beta cutoff. Every successful make has an unmake,
+     including overlooked moves and interrupted searches. */
+  function search(alpha, beta, depth, ply) {
+    nodes++;
+    if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached())
+      stopped = true;
+    if (stopped) return { score: 0, pv: NO_LINE };
+    if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
+    if (depth === 0 || ply >= MAX_PLY - 1)
+      return { score: judge(pos, skill), pv: NO_LINE }; // a leaf
 
-  let bestScore = -INF;
-  let legalMoveCount = 0, searchedMoveCount = 0;
-  for (let i = first; i < last; i++) {
-    const move = moveStack[i];
-    if (ply === 0 && rootSkipped.includes(move)) continue;
-    if (!makeMove(move)) continue;              // leaves our king in check
-    legalMoveCount++;
-    if (ply > 0 && !seesMove(move, ply)) {
-      unmakeMove();
-      continue;
-    }
-    searchedMoveCount++;
-    const score = -search(-beta, -alpha, depth - 1, ply + 1);
-    unmakeMove();
-    if (stopped) return 0;
+    let bestScore = -INF, pv = NO_LINE;
+    let raisedAlpha = alpha; // alpha, raised as better moves are found
+    let legalMoveCount = 0, searchedMoveCount = 0;
+    for (const move of orderMoves(pos, generateMoves(pos))) {
+      if (ply === 0 && unseen.includes(move)) continue;
+      if (!makeMove(pos, move)) continue;       // leaves our king in check
+      legalMoveCount++;
+      if (ply > 0 && !seesMove(pos, skill, move, ply)) {
+        unmakeMove(pos);
+        continue;
+      }
+      searchedMoveCount++;
+      const child = search(-beta, -raisedAlpha, depth - 1, ply + 1);
+      unmakeMove(pos);
+      if (stopped) return { score: 0, pv: NO_LINE };
 
-    if (score > bestScore) {
-      bestScore = score;
-      if (score > alpha) {
-        alpha = score;
-        updatePV(ply, move);
-        if (alpha >= beta) break; // opponent would never allow this line
+      const score = -child.score;
+      if (score > bestScore) {
+        bestScore = score;
+        if (score > raisedAlpha) {
+          raisedAlpha = score;
+          pv = [move, ...child.pv]; // this move, then the best reply line
+          if (raisedAlpha >= beta) break; // opponent would never allow it
+        }
       }
     }
-  }
 
-  if (legalMoveCount === 0)
-    return isAttacked(kingSq[side], side ^ 1) ? -MATE + ply : DRAW;
-  if (searchedMoveCount === 0) return evaluate(); // overlooked every legal move
-  return bestScore;
+    if (legalMoveCount === 0) {
+      const inCheck = isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
+      return { score: inCheck ? -MATE + ply : DRAW, pv: NO_LINE };
+    }
+    if (searchedMoveCount === 0) // overlooked every legal move
+      return { score: judge(pos, skill), pv: NO_LINE };
+    return { score: bestScore, pv };
+  }
 }
 
 /* ---- Move ordering --------------------------------------------
    Alpha-beta prunes most when a good move is tried first, and the
    simplest guess at a good move is a capture. So: captures (and
-   promotions) first, then the quiet moves, each group in the order
-   it was generated. Ranking the captures themselves (most valuable
-   victim first, MVV-LVA) is the next refinement; see COLOPHON.md. */
-function orderMoves(first, last) {
-  let k = first; // everything before k is a capture
-  for (let i = first; i < last; i++) {
-    const m = moveStack[i];
-    if (board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m)) {
-      const t = moveStack[k]; moveStack[k] = m; moveStack[i] = t; k++;
-    }
+   en passant and promotions) first, then the quiet moves, each group
+   in the order it was generated. Castling is encoded as "king takes
+   own rook", so it lands in the first group too. Ranking the
+   captures themselves (most valuable victim first, MVV-LVA) is the
+   next refinement; see COLOPHON.md. Returns a new array. */
+function orderMoves(pos, moves) {
+  const board = pos.board, early = [], late = [];
+  for (const m of moves) {
+    if (board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m) !== 0)
+      early.push(m);
+    else late.push(m);
   }
-}
-
-/* The principal variation of a node is its best move followed by
-   the principal variation of the child that move leads to. */
-function updatePV(ply, m) {
-  pvTable[ply * MAX_PLY + ply] = m;
-  for (let i = ply + 1; i < pvLength[ply + 1]; i++)
-    pvTable[ply * MAX_PLY + i] = pvTable[(ply + 1) * MAX_PLY + i];
-  pvLength[ply] = pvLength[ply + 1];
+  return early.concat(late);
 }
 
 /* ---- Time management -------------------------------------------
-   Two budgets: a soft one (do not start another iteration after it)
-   and a hard one (abort the search). The first iteration is never
-   aborted so there is always a move to play. Below full strength
-   the clock is ignored: a level is a depth, never a time budget, so
-   it plays the same on any machine. */
-function setLimits(go) {
-  depthLimit = go.depth || MAX_PLY;
-  nodeLimit = go.nodes || 0;
-  timeSoft = timeHard = Infinity;
-  if (skillLevel < SKILL_MAX) return;
+   Turn the numbers of a UCI "go" command into search limits for the
+   side to move: { depth, nodes, softMs, hardMs }. Two time budgets:
+   a soft one (do not start another depth after it) and a hard one
+   (abort the search). Below full strength the clock is ignored: a
+   level is a depth, never a time budget, so it plays the same on any
+   machine. */
+function limitsFor(go, side, level) {
+  const untimed = {
+    depth: go.depth || MAX_PLY, nodes: go.nodes || 0,
+    softMs: Infinity, hardMs: Infinity,
+  };
+  if (level < SKILL_MAX) return untimed;
   const overhead = 20;
   if (go.movetime) {
-    timeSoft = timeHard = Math.max(1, go.movetime - overhead);
-  } else {
-    const time = side === WHITE ? go.wtime : go.btime;
-    const inc = (side === WHITE ? go.winc : go.binc) || 0;
-    if (time !== undefined) {
-      const movesToGo = go.movestogo || 30;
-      timeSoft = Math.max(1, time / movesToGo + 0.75 * inc - overhead);
-      timeHard = Math.max(1, Math.min(4 * timeSoft, 0.8 * time - overhead));
-    }
+    const ms = Math.max(1, go.movetime - overhead);
+    return { ...untimed, softMs: ms, hardMs: ms };
   }
-}
-
-function checkLimits() {
-  if (rootDepth <= 1) return;
-  if (nodeLimit && nodes >= nodeLimit) stopped = true;
-  if (now() - startTime >= timeHard) stopped = true;
-  if (stopFlag !== null && Atomics.load(stopFlag, 0) !== 0) stopped = true;
-}
-
-function report(depth, score) {
-  const elapsed = now() - startTime;
-  const nps = elapsed > 0 ? Math.round(nodes * 1000 / elapsed) : 0;
-  const scoreText = Math.abs(score) >= MATE_IN_MAX
-    ? "mate " + (score > 0 ? (MATE - score + 1) >> 1 : -((MATE + score) >> 1))
-    : "cp " + score;
-  let pv = "";
-  for (let i = 0; i < pvLength[0]; i++) pv += " " + moveToUci(pvTable[i]);
-  out(
-    `info depth ${depth} multipv 1 score ${scoreText} nodes ${nodes} ` +
-    `nps ${nps} time ${Math.round(elapsed)} pv${pv}`
-  );
+  const time = side === WHITE ? go.wtime : go.btime;
+  if (time === undefined) return untimed;
+  const inc = (side === WHITE ? go.winc : go.binc) || 0;
+  const movesToGo = go.movestogo || 30;
+  const softMs = Math.max(1, time / movesToGo + 0.75 * inc - overhead);
+  const hardMs = Math.max(1, Math.min(4 * softMs, 0.8 * time - overhead));
+  return { ...untimed, softMs, hardMs };
 }
 
 /* ================================================================
@@ -337,6 +339,9 @@ function report(depth, score) {
    always mates in one when it can. Levels 2..SKILL_MAX-1 come from
    the LADDER below; their ratings were measured against Maia and
    are recorded in COLOPHON.md.
+
+   A skill is a frozen value made by skillFor(level, seed); the
+   functions below take it as an argument.
 */
 
 const SKILL_MAX = 10;
@@ -365,90 +370,94 @@ const LADDER = [
   rung(MAX_PLY, 0,       0,      0,    FULL_VISION), // 10 full strength 1894
 ];
 
-let skillLevel = SKILL_MAX, skill = LADDER[SKILL_MAX - 1];
-let skillSeed = 0, seedKey = 0;
-
-function setSkillLevel(level) {
-  skillLevel = Math.min(SKILL_MAX, Math.max(1, level | 0));
-  skill = LADDER[skillLevel - 1] || LADDER[SKILL_MAX - 1];
+/* The skill for a Skill_Level (clamped to 1..SKILL_MAX) and a
+   Skill_Seed. The seed picks which weakened opponent a level is; 0
+   means the built-in one, so an engine nobody configures still plays
+   the same game twice. At full strength nothing is drawn from it.
+   Level 1 has no rung; it borrows full strength's (unused) knobs. */
+function skillFor(level, seed) {
+  const clamped = Math.min(SKILL_MAX, Math.max(1, level | 0));
+  const s = seed | 0;
+  return Object.freeze({
+    ...(LADDER[clamped - 1] || LADDER[SKILL_MAX - 1]),
+    level: clamped,
+    seed: s,
+    seedKey: mix32(s === 0 ? 0x9E3779B9 : s),
+  });
 }
 
-/* Skill_Seed: which weakened opponent a level is. 0 means the built-in
-   one, so an engine nobody configures still plays the same game twice.
-   At full strength nothing is drawn from it, so it has no effect. */
-function setSkillSeed(seed) {
-  skillSeed = seed | 0;
-  seedKey = mix32(skillSeed === 0 ? 0x9E3779B9 : skillSeed);
-}
-
-/* Depth ceiling for the position on the board: the rung's depth, and
-   one more on the rung's share of positions, decided by the hash. */
-function skillDepth() {
+/* Depth ceiling for `pos`: the rung's depth, and one more on the
+   rung's share of positions, decided by the hash. */
+function skillDepth(pos, skill) {
   if (skill.deeperPermille === 0) return skill.depth;
-  const h = mix32(keyLo ^ seedKey ^ 0xA5A55A5A);
+  const h = mix32(pos.keyLo ^ skill.seedKey ^ 0xA5A55A5A);
   return skill.depth + (h % 1000 < skill.deeperPermille ? 1 : 0);
+}
+
+/* What this skill makes of `pos`: the evaluation plus, now and then,
+   a misjudgement. This is what the search sees at a leaf. */
+function judge(pos, skill) {
+  return evaluate(pos) + blunder(pos, skill);
 }
 
 /* The occasional misjudgement, added to the evaluation of the rung's
    share of positions: up to blunderWindow centipawns either way. Mate
    scores never pass through here, since they come from the search,
    not from evaluate(). */
-function blunder() {
+function blunder(pos, skill) {
   if (skill.blunderWindow === 0) return 0;
-  const h = mix32(keyLo ^ Math.imul(keyHi, 0x9E3779B9) ^ seedKey);
+  const h = mix32(pos.keyLo ^ Math.imul(pos.keyHi, 0x9E3779B9) ^ skill.seedKey);
   if (h % 1000 >= skill.blunderPermille) return 0;
   return (mix32(h) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
 }
 
-/* Does the player notice this move at all? Called after makeMove(),
-   so the key is the child's and "gives check" is known. */
-function seesMove(m, ply) {
+/* Does the player notice move m, made `ply` plies below the root?
+   Called after makeMove(pos, m), so the key is the child's and
+   "gives check" is known. */
+function seesMove(pos, skill, m, ply) {
   if (skill.vision >= FULL_VISION) return true;
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
-  const h = mix32(keyLo ^ Math.imul(m, 0x9E3779B9) ^ seedKey);
+  const h = mix32(pos.keyLo ^ Math.imul(m, 0x9E3779B9) ^ skill.seedKey);
   if (((h >>> 20) & 1023) < chance) return true;
-  const easy = histCaptured[hply - 1] !== EMPTY ||
-    moveFlag(m) === FLAG_EP || isAttacked(kingSq[side], side ^ 1);
+  const easy = pos.histCaptured[pos.hply - 1] !== EMPTY ||
+    moveFlag(m) === FLAG_EP ||
+    isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
   return easy && ((h >>> 8) & 1023) < chance;
 }
 
-/* Root moves the player overlooks. If it would overlook them all, it
-   sees them all: a move has to be played. */
-function overlookedRootMoves(rootMoves) {
+/* The root moves the player overlooks. If it would overlook them all,
+   it sees them all: a move has to be played. */
+function overlookedRootMoves(pos, skill, rootMoves) {
   if (skill.vision >= FULL_VISION) return [];
-  const unseen = [];
-  for (const m of rootMoves) {
-    makeMove(m);
-    if (!seesMove(m, 0)) unseen.push(m);
-    unmakeMove();
-  }
+  const unseen = rootMoves.filter((m) => {
+    makeMove(pos, m);
+    const seen = seesMove(pos, skill, m, 0);
+    unmakeMove(pos);
+    return !seen;
+  });
   return unseen.length === rootMoves.length ? [] : unseen;
 }
 
-/* Level 1: a random legal move, unless a move mates on the spot. */
-function playRandomly() {
-  const moves = legalMoves();
-  if (moves.length === 0) { out("bestmove 0000"); return; }
-  let choice = moves[mix32(keyLo ^ seedKey) % moves.length];
-  for (const m of moves) {
-    makeMove(m);
-    const mate = legalMoves().length === 0 &&
-      isAttacked(kingSq[side], side ^ 1);
-    unmakeMove();
-    if (mate) { choice = m; break; }
-  }
-  out(
-    `info depth 1 multipv 1 score cp 0 nodes ${moves.length} ` +
-    `nps 0 time 0 pv ${moveToUci(choice)}`
-  );
-  out("bestmove " + moveToUci(choice));
+/* Level 1: a random legal move from `moves`, unless one mates on the
+   spot. */
+function randomMove(pos, skill, moves) {
+  return moves.find((m) => givesMate(pos, m)) ??
+    moves[mix32(pos.keyLo ^ skill.seedKey) % moves.length];
+}
+
+function givesMate(pos, m) {
+  makeMove(pos, m);
+  const mate = legalMoves(pos).length === 0 &&
+    isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
+  unmakeMove(pos);
+  return mate;
 }
 
 /* A 32-bit integer hash finaliser (two multiply-xorshift rounds). */
 function mix32(x) {
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
-  return (x ^ (x >>> 16)) >>> 0;
+  const a = Math.imul(x ^ (x >>> 16), 0x45d9f3b);
+  const b = Math.imul(a ^ (a >>> 16), 0x45d9f3b);
+  return (b ^ (b >>> 16)) >>> 0;
 }
 
 /* ================================================================
@@ -463,11 +472,11 @@ function mix32(x) {
    rooks like the seventh rank, the king hides in the middlegame
    and comes out in the endgame.
 
-   evaluate() simply walks the board and adds up material and
+   evaluate(pos) simply walks the board and adds up material and
    placement. (Real engines keep these sums up to date in make/unmake
    instead, which is faster but spreads the evaluation over three
-   functions.) The skill level's occasional blunder is added at
-   the end.
+   functions.) The skill level's occasional blunder is added
+   separately, by judge() in S2.
 */
 
 const MG_VALUE = [0, 100, 320, 330, 500, 900, 0];
@@ -475,10 +484,8 @@ const EG_VALUE = [0, 120, 320, 330, 520, 920, 0];
 // 24 at the start, 0 when only kings and pawns remain.
 const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];
 
-// Placement bonuses, signed by colour.
-const placeMg = new Int16Array(16 * 128), placeEg = new Int16Array(16 * 128);
-
-/* Bonus for a white piece of `type` on file f, rank r (0 = rank 1). */
+/* Bonus for a white piece of `type` on file f, rank r (0 = rank 1),
+   as [middlegame, endgame]. */
 function squareBonus(type, f, r) {
   const centre = 3 -
     ((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) >> 1);
@@ -506,37 +513,43 @@ function squareBonus(type, f, r) {
   }
 }
 
-function initEvaluation() {
+/* squareBonus() for every packed piece and square, looked up as
+   [piece * 128 + square] and signed by colour: white as is, black
+   mirrored and negated. */
+function placementTables() {
+  const mgTable = new Int16Array(16 * 128), egTable = new Int16Array(16 * 128);
   for (let type = PAWN; type <= KING; type++) {
     for (let s = 0; s < 128; s++) {
       if (s & 0x88) continue;
       const [mg, eg] = squareBonus(type, s & 7, s >> 4);
-      placeMg[type * 128 + s] = mg;
-      placeEg[type * 128 + s] = eg; // white: as is
-      placeMg[(type | 8) * 128 + (s ^ 0x70)] = -mg;
-      placeEg[(type | 8) * 128 + (s ^ 0x70)] = -eg;
-      // Black: mirrored and negated.
+      mgTable[type * 128 + s] = mg;
+      egTable[type * 128 + s] = eg;
+      mgTable[(type | 8) * 128 + (s ^ 0x70)] = -mg;
+      egTable[(type | 8) * 128 + (s ^ 0x70)] = -eg;
     }
   }
+  return [mgTable, egTable];
 }
 
-function evaluate() {
+const [PLACE_MG, PLACE_EG] = placementTables();
+
+/* Static evaluation of `pos`, in centipawns for the side to move. */
+function evaluate(pos) {
+  const board = pos.board;
   let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
   for (let s = 0; s < 128; s++) {
     if (s & 0x88) { s += 7; continue; }
     const p = board[s];
     if (p === EMPTY) continue;
     const type = p & 7, sign = p < 8 ? 1 : -1;
-    mg += sign * MG_VALUE[type];
-    eg += sign * EG_VALUE[type];
+    mg += sign * MG_VALUE[type] + PLACE_MG[p * 128 + s];
+    eg += sign * EG_VALUE[type] + PLACE_EG[p * 128 + s];
     phase += PHASE_INC[type];
-    mg += placeMg[p * 128 + s];
-    eg += placeEg[p * 128 + s];
   }
   // Taper from middlegame to endgame as material leaves the board.
-  if (phase > 24) phase = 24;
-  const score = ((mg * phase + eg * (24 - phase)) / 24) | 0;
-  return (side === WHITE ? score : -score) + blunder();
+  const tapered = Math.min(phase, 24);
+  const score = ((mg * tapered + eg * (24 - tapered)) / 24) | 0;
+  return pos.side === WHITE ? score : -score;
 }
 
 /* ================================================================
@@ -548,26 +561,27 @@ function evaluate() {
    alongside the position they describe. Evaluation and search
    policy live outside it.
 
-   The position is a set of module-level variables rather than an
-   object: there is only ever one position, and the search makes
-   and unmakes moves on it (make/unmake rather than copy/make).
-   Everything a move destroys is saved on the history stack so it
-   can be put back exactly.
+   A position is a plain object (see emptyPosition()), made by
+   positionFromFen() and passed to every function here as `pos`.
+   The search makes and unmakes moves on one position rather than
+   copying it (make/unmake rather than copy/make). Everything a move
+   destroys is saved on the position's history stack so it can be put
+   back exactly.
 
    Position contract (what search needs to know):
-   - generateMoves() supplies packed pseudo-legal moves for the
-     current position; legalMoves() filters them without changing it.
-   - makeMove(move) accepts one of those moves, not arbitrary packed
-     input. On true, the move is applied, side is the opponent, and
-     one history entry is pushed. On false, our king would be in
+   - generateMoves(pos) returns a new array of packed pseudo-legal
+     moves; legalMoves(pos) filters them and hands pos back unchanged.
+   - makeMove(pos, move) accepts one of those moves, not arbitrary
+     packed input. On true, the move is applied, side is the opponent,
+     and one history entry is pushed. On false, our king would be in
      check and the position and history depth are already restored.
    - Every successful makeMove() in search must have exactly one
-     unmakeMove(), even when a move is overlooked or search stops.
+     unmakeMove(pos), even when a move is overlooked or search stops.
      Unmake restores the board, piece counts, king squares, side,
      castling rights, en passant square, fifty-move counter, hash
      and history depth. It requires a previous successful make.
-   - setPosition() loads a FEN and resets history; it is not an
-     operation to perform while a search move awaits its unmake.
+   - makeMove() and unmakeMove() are the only functions that change
+     a position after it has been made.
 
    addPiece() and removePiece() are internal bookkeeping helpers:
    they keep the board, piece counts and piece component of the hash
@@ -576,156 +590,175 @@ function evaluate() {
 
    Castling rights are four bits: 1 = white kingside, 2 = white
    queenside, 4 = black kingside, 8 = black queenside. For each
-   right we remember the rook's square (Chess960 rooks can start on
-   any file), and castleMask[sq] holds the rights that survive a
-   piece moving from or to that square.
+   right the position remembers the rook's square (Chess960 rooks
+   can start on any file), and castleMask[sq] holds the rights that
+   survive a piece moving from or to that square.
 */
 
-const board = new Int8Array(128);
-const kingSq = new Int32Array(2);
-const pieceCount = new Int32Array(16);
-let side = WHITE, castling = 0, epSq = -1, fifty = 0;
-let keyLo = 0, keyHi = 0; // 64-bit Zobrist key as two 32-bit halves
-
-const castleRookSq = new Int32Array(4).fill(-1);
 const castleKingTo = [6, 2, 118, 114];  // g1 c1 g8 c8
 const castleRookTo = [5, 3, 117, 115];  // f1 d1 f8 d8
-const castleMask = new Int8Array(128).fill(15);
-let chess960 = false;
 
 const HISTORY_SIZE = 2048;             // game moves plus search plies
-let hply = 0;
-const histMove = new Int32Array(HISTORY_SIZE);
-const histCaptured = new Int8Array(HISTORY_SIZE);
-const histCastle = new Int8Array(HISTORY_SIZE);
-const histEp = new Int16Array(HISTORY_SIZE);
-const histFifty = new Int16Array(HISTORY_SIZE);
-const histKeyLo = new Int32Array(HISTORY_SIZE);
-const histKeyHi = new Int32Array(HISTORY_SIZE);
+
+/* A position with an empty board and no history. Only for
+   positionFromFen(), which fills it in. */
+function emptyPosition() {
+  return {
+    board: new Int8Array(128),       // EMPTY or a packed piece per square
+    kingSq: new Int32Array(2),       // by colour
+    pieceCount: new Int32Array(16),  // by packed piece
+    side: WHITE,                     // to move
+    castling: 0,                     // rights, four bits
+    castleRookSq: new Int32Array(4).fill(-1),
+    castleMask: new Int8Array(128).fill(15),
+    epSq: -1,                        // en passant target square, or -1
+    fifty: 0,                        // plies since a capture or pawn move
+    keyLo: 0, keyHi: 0,              // 64-bit Zobrist key as two halves
+    // History: what each move destroyed, indexed by ply 0..hply-1.
+    hply: 0,
+    histMove: new Int32Array(HISTORY_SIZE),
+    histCaptured: new Int8Array(HISTORY_SIZE),
+    histCastle: new Int8Array(HISTORY_SIZE),
+    histEp: new Int16Array(HISTORY_SIZE),
+    histFifty: new Int16Array(HISTORY_SIZE),
+    histKeyLo: new Int32Array(HISTORY_SIZE),
+    histKeyHi: new Int32Array(HISTORY_SIZE),
+  };
+}
 
 /* Place nonempty packed piece p on empty on-board square s.
    Also update its count, piece hash and (for a king) kingSq. */
-function addPiece(s, p) {
-  board[s] = p; pieceCount[p]++;
-  keyLo ^= zobPieceLo[p * 128 + s]; keyHi ^= zobPieceHi[p * 128 + s];
-  if ((p & 7) === KING) kingSq[p >> 3] = s;
+function addPiece(pos, s, p) {
+  pos.board[s] = p;
+  pos.pieceCount[p]++;
+  pos.keyLo ^= zobPieceLo[p * 128 + s];
+  pos.keyHi ^= zobPieceHi[p * 128 + s];
+  if ((p & 7) === KING) pos.kingSq[p >> 3] = s;
 }
 
 /* Remove the piece from occupied on-board square s, updating its
    count and piece hash. A removed king's kingSq stays stale until
    addPiece() places it again; callers must finish that transition
    before asking about king safety. */
-function removePiece(s) {
-  const p = board[s];
-  board[s] = EMPTY; pieceCount[p]--;
-  keyLo ^= zobPieceLo[p * 128 + s]; keyHi ^= zobPieceHi[p * 128 + s];
+function removePiece(pos, s) {
+  const p = pos.board[s];
+  pos.board[s] = EMPTY;
+  pos.pieceCount[p]--;
+  pos.keyLo ^= zobPieceLo[p * 128 + s];
+  pos.keyHi ^= zobPieceHi[p * 128 + s];
 }
 
-/* Apply a generated pseudo-legal move. True requires a later unmake;
-   false means king safety failed and the position is already restored.
-   Movement rules are the generator's responsibility, not validated here. */
-function makeMove(move) {
+/* Apply a generated pseudo-legal move to pos. True requires a later
+   unmake; false means king safety failed and pos is already restored.
+   Movement rules are the generator's responsibility, not validated
+   here. */
+function makeMove(pos, move) {
   const from = moveFrom(move), to = moveTo(move);
   const promotion = movePromo(move), flag = moveFlag(move);
-  const us = side, them = side ^ 1, piece = board[from];
+  const us = pos.side, them = us ^ 1, piece = pos.board[from];
 
-  histMove[hply] = move;
-  histCaptured[hply] = flag === FLAG_CASTLE ? EMPTY : board[to];
-  histCastle[hply] = castling;
-  histEp[hply] = epSq;
-  histFifty[hply] = fifty;
-  histKeyLo[hply] = keyLo;
-  histKeyHi[hply] = keyHi;
-  hply++;
+  const h = pos.hply;
+  pos.histMove[h] = move;
+  pos.histCaptured[h] = flag === FLAG_CASTLE ? EMPTY : pos.board[to];
+  pos.histCastle[h] = pos.castling;
+  pos.histEp[h] = pos.epSq;
+  pos.histFifty[h] = pos.fifty;
+  pos.histKeyLo[h] = pos.keyLo;
+  pos.histKeyHi[h] = pos.keyHi;
+  pos.hply = h + 1;
 
-  if (epSq >= 0) {
-    keyLo ^= zobEpLo[epSq & 7];
-    keyHi ^= zobEpHi[epSq & 7];
-    epSq = -1;
+  if (pos.epSq >= 0) {
+    pos.keyLo ^= zobEpLo[pos.epSq & 7];
+    pos.keyHi ^= zobEpHi[pos.epSq & 7];
+    pos.epSq = -1;
   }
-  fifty++;
+  pos.fifty++;
 
   if (flag === FLAG_CASTLE) {
-    const castle = us * 2 + (to > from ? 0 : 1), rook = board[to];
-    removePiece(from);
-    removePiece(to);
-    addPiece(castleKingTo[castle], piece);
-    addPiece(castleRookTo[castle], rook);
+    const castle = us * 2 + (to > from ? 0 : 1), rook = pos.board[to];
+    removePiece(pos, from);
+    removePiece(pos, to);
+    addPiece(pos, castleKingTo[castle], piece);
+    addPiece(pos, castleRookTo[castle], rook);
   } else {
-    if (board[to] !== EMPTY) {
-      removePiece(to);
-      fifty = 0;
+    if (pos.board[to] !== EMPTY) {
+      removePiece(pos, to);
+      pos.fifty = 0;
     }
-    removePiece(from);
-    addPiece(to, promotion ? promotion | (us << 3) : piece);
+    removePiece(pos, from);
+    addPiece(pos, to, promotion ? promotion | (us << 3) : piece);
     if ((piece & 7) === PAWN) {
-      fifty = 0;
-      if (flag === FLAG_EP) removePiece(to + (us === WHITE ? -16 : 16));
+      pos.fifty = 0;
+      if (flag === FLAG_EP) removePiece(pos, to + (us === WHITE ? -16 : 16));
       else if (to - from === 32 || from - to === 32) {
-        epSq = (from + to) >> 1;
-        keyLo ^= zobEpLo[epSq & 7];
-        keyHi ^= zobEpHi[epSq & 7];
+        pos.epSq = (from + to) >> 1;
+        pos.keyLo ^= zobEpLo[pos.epSq & 7];
+        pos.keyHi ^= zobEpHi[pos.epSq & 7];
       }
     }
   }
 
-  keyLo ^= zobCastleLo[castling]; keyHi ^= zobCastleHi[castling];
-  castling &= castleMask[from] & castleMask[to];
-  keyLo ^= zobCastleLo[castling]; keyHi ^= zobCastleHi[castling];
-  side = them;
-  keyLo ^= zobSideLo;
-  keyHi ^= zobSideHi;
+  pos.keyLo ^= zobCastleLo[pos.castling];
+  pos.keyHi ^= zobCastleHi[pos.castling];
+  pos.castling &= pos.castleMask[from] & pos.castleMask[to];
+  pos.keyLo ^= zobCastleLo[pos.castling];
+  pos.keyHi ^= zobCastleHi[pos.castling];
+  pos.side = them;
+  pos.keyLo ^= zobSideLo;
+  pos.keyHi ^= zobSideHi;
 
-  if (isAttacked(kingSq[us], them)) {
-    unmakeMove();
+  if (isAttacked(pos, pos.kingSq[us], them)) {
+    unmakeMove(pos);
     return false;
   }
   return true;
 }
 
-/* Undo the last successful makeMove(), restoring the previous position.
-   Requires hply > 0; abandoned history slots beyond hply are not cleared. */
-function unmakeMove() {
-  hply--;
-  side ^= 1;
-  const move = histMove[hply], from = moveFrom(move), to = moveTo(move);
+/* Undo the last successful makeMove(pos, ...), restoring the previous
+   position. Requires hply > 0; abandoned history slots beyond hply are
+   not cleared. */
+function unmakeMove(pos) {
+  const h = pos.hply - 1;
+  pos.hply = h;
+  pos.side ^= 1;
+  const move = pos.histMove[h], from = moveFrom(move), to = moveTo(move);
   const promotion = movePromo(move), flag = moveFlag(move);
-  const us = side;
+  const us = pos.side;
   if (flag === FLAG_CASTLE) {
     const castle = us * 2 + (to > from ? 0 : 1);
-    const king = board[castleKingTo[castle]];
-    const rook = board[castleRookTo[castle]];
-    removePiece(castleKingTo[castle]);
-    removePiece(castleRookTo[castle]);
-    addPiece(from, king);
-    addPiece(to, rook);
+    const king = pos.board[castleKingTo[castle]];
+    const rook = pos.board[castleRookTo[castle]];
+    removePiece(pos, castleKingTo[castle]);
+    removePiece(pos, castleRookTo[castle]);
+    addPiece(pos, from, king);
+    addPiece(pos, to, rook);
   } else {
-    const piece = board[to];
-    removePiece(to);
-    addPiece(from, promotion ? PAWN | (us << 3) : piece);
+    const piece = pos.board[to];
+    removePiece(pos, to);
+    addPiece(pos, from, promotion ? PAWN | (us << 3) : piece);
     if (flag === FLAG_EP)
-      addPiece(to + (us === WHITE ? -16 : 16), PAWN | ((us ^ 1) << 3));
-    else if (histCaptured[hply] !== EMPTY) addPiece(to, histCaptured[hply]);
+      addPiece(pos, to + (us === WHITE ? -16 : 16), PAWN | ((us ^ 1) << 3));
+    else if (pos.histCaptured[h] !== EMPTY) addPiece(pos, to, pos.histCaptured[h]);
   }
-  castling = histCastle[hply];
-  epSq = histEp[hply];
-  fifty = histFifty[hply];
-  keyLo = histKeyLo[hply];
-  keyHi = histKeyHi[hply];
+  pos.castling = pos.histCastle[h];
+  pos.epSq = pos.histEp[h];
+  pos.fifty = pos.histFifty[h];
+  pos.keyLo = pos.histKeyLo[h];
+  pos.keyHi = pos.histKeyHi[h];
 }
 
 /* Draw by the fifty-move rule, by repetition (once is enough inside
    the search), or by insufficient material (bare kings, or a single
    minor piece). */
-function isDraw() {
-  if (fifty >= 100) return true;
-  for (let i = hply - 2; i >= 0 && i >= hply - fifty; i -= 2)
-    if (histKeyLo[i] === keyLo && histKeyHi[i] === keyHi) return true;
-  if (pieceCount[PAWN] + pieceCount[PAWN | 8] + pieceCount[ROOK] +
-      pieceCount[ROOK | 8] + pieceCount[QUEEN] + pieceCount[QUEEN | 8] === 0 &&
-      pieceCount[KNIGHT] + pieceCount[KNIGHT | 8] +
-      pieceCount[BISHOP] + pieceCount[BISHOP | 8] <= 1) return true;
-  return false;
+function isDraw(pos) {
+  if (pos.fifty >= 100) return true;
+  for (let i = pos.hply - 2; i >= 0 && i >= pos.hply - pos.fifty; i -= 2)
+    if (pos.histKeyLo[i] === pos.keyLo && pos.histKeyHi[i] === pos.keyHi)
+      return true;
+  const n = pos.pieceCount;
+  return n[PAWN] + n[PAWN | 8] + n[ROOK] + n[ROOK | 8] +
+      n[QUEEN] + n[QUEEN | 8] === 0 &&
+    n[KNIGHT] + n[KNIGHT | 8] + n[BISHOP] + n[BISHOP | 8] <= 1;
 }
 
 /* ---- FEN ----------------------------------------------------------
@@ -734,18 +767,9 @@ function isDraw() {
    rook on that side of the king, which covers Chess960 too. */
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-function setPosition(fen) {
-  board.fill(EMPTY);
-  pieceCount.fill(0);
-  kingSq.fill(0);
-  keyLo = keyHi = 0;
-  castling = 0;
-  epSq = -1;
-  fifty = 0;
-  hply = 0;
-  castleRookSq.fill(-1);
-  castleMask.fill(15);
-
+/* A new position from a FEN string, with no history. */
+function positionFromFen(fen) {
+  const pos = emptyPosition();
   const parts = fen.trim().split(/\s+/);
   let rank = 7, file = 0;
   for (const ch of parts[0]) {
@@ -755,45 +779,51 @@ function setPosition(fen) {
     } else if (ch >= "1" && ch <= "8") {
       file += ch.charCodeAt(0) - 48;
     } else {
-      addPiece(rank * 16 + file, PIECE_CHARS.indexOf(ch));
+      addPiece(pos, rank * 16 + file, PIECE_CHARS.indexOf(ch));
       file++;
     }
   }
-  side = parts[1] === "b" ? BLACK : WHITE;
-  if (side === BLACK) { keyLo ^= zobSideLo; keyHi ^= zobSideHi; }
+  pos.side = parts[1] === "b" ? BLACK : WHITE;
+  if (pos.side === BLACK) { pos.keyLo ^= zobSideLo; pos.keyHi ^= zobSideHi; }
 
-  setCastlingRights(parts[2] || "-");
-  keyLo ^= zobCastleLo[castling];
-  keyHi ^= zobCastleHi[castling];
+  Object.assign(pos, castlingFromFen(pos.board, pos.kingSq, parts[2] || "-"));
+  pos.keyLo ^= zobCastleLo[pos.castling];
+  pos.keyHi ^= zobCastleHi[pos.castling];
 
   if (parts[3] && parts[3] !== "-") {
-    epSq = parseSquare(parts[3]);
-    keyLo ^= zobEpLo[epSq & 7];
-    keyHi ^= zobEpHi[epSq & 7];
+    pos.epSq = parseSquare(parts[3]);
+    pos.keyLo ^= zobEpLo[pos.epSq & 7];
+    pos.keyHi ^= zobEpHi[pos.epSq & 7];
   }
-  fifty = parseInt(parts[4]) || 0;
+  pos.fifty = parseInt(parts[4]) || 0;
+  return pos;
 }
 
-/* Interpret the FEN rights after the board and king squares are loaded. */
-function setCastlingRights(rights) {
-  for (const ch of rights) {
+/* Interpret the FEN castling field for a loaded board and king
+   squares. Returns { castling, castleRookSq, castleMask }. */
+function castlingFromFen(board, kingSq, field) {
+  // The first file, walking from `edge` towards `kingFile`, that holds
+  // `rook` on the rank starting at `rankBase`; -1 if there is none.
+  const outermostRook = (rankBase, rook, edge, kingFile) => {
+    const step = edge < kingFile ? 1 : -1;
+    for (let f = edge; f !== kingFile; f += step)
+      if (board[rankBase + f] === rook) return f;
+    return -1;
+  };
+
+  let castling = 0;
+  const castleRookSq = new Int32Array(4).fill(-1);
+  const castleMask = new Int8Array(128).fill(15);
+  for (const ch of field) {
     if (ch === "-") continue;
     const colour = ch === ch.toUpperCase() ? WHITE : BLACK;
     const rankBase = colour === WHITE ? 0 : 112;
     const rook = ROOK | (colour << 3);
     const kingFile = kingSq[colour] & 7, letter = ch.toUpperCase();
-    let rookFile = -1;
-    if (letter === "K") {
-      for (let f = 7; f > kingFile; f--) {
-        if (board[rankBase + f] === rook) { rookFile = f; break; }
-      }
-    } else if (letter === "Q") {
-      for (let f = 0; f < kingFile; f++) {
-        if (board[rankBase + f] === rook) { rookFile = f; break; }
-      }
-    } else {
-      rookFile = letter.charCodeAt(0) - 65;
-    }
+    const rookFile =
+      letter === "K" ? outermostRook(rankBase, rook, 7, kingFile)
+        : letter === "Q" ? outermostRook(rankBase, rook, 0, kingFile)
+          : letter.charCodeAt(0) - 65;
     if (rookFile < 0 || board[rankBase + rookFile] !== rook) continue;
     const c = colour * 2 + (rookFile > kingFile ? 0 : 1);
     castling |= 1 << c;
@@ -801,14 +831,17 @@ function setCastlingRights(rights) {
     castleMask[rankBase + rookFile] &= ~(1 << c);
     castleMask[kingSq[colour]] &= ~(3 << (colour * 2));
   }
+  return { castling, castleRookSq, castleMask };
 }
 
-function toFen() {
+/* The FEN string for pos. Castling rights are written as file letters
+   only for Chess960 rooks that are not in the corners. */
+function toFen(pos, chess960) {
   let fen = "";
   for (let r = 7; r >= 0; r--) {
     let empty = 0;
     for (let f = 0; f < 8; f++) {
-      const p = board[r * 16 + f];
+      const p = pos.board[r * 16 + f];
       if (p === EMPTY) empty++;
       else { if (empty) fen += empty; empty = 0; fen += PIECE_CHARS[p]; }
     }
@@ -817,59 +850,49 @@ function toFen() {
   }
   let rights = "";
   for (let c = 0; c < 4; c++) {
-    if (!(castling & (1 << c))) continue;
-    const file = castleRookSq[c] & 7;
+    if (!(pos.castling & (1 << c))) continue;
+    const file = pos.castleRookSq[c] & 7;
     const standard = (c & 1) === 0 ? file === 7 : file === 0;
     const ch = chess960 && !standard
       ? "abcdefgh"[file]
       : (c & 1) === 0 ? "k" : "q";
     rights += c < 2 ? ch.toUpperCase() : ch;
   }
-  return `${fen} ${side === WHITE ? "w" : "b"} ${rights || "-"} ` +
-    `${epSq >= 0 ? squareName(epSq) : "-"} ${fifty} ${1 + (hply >> 1)}`;
+  return `${fen} ${pos.side === WHITE ? "w" : "b"} ${rights || "-"} ` +
+    `${pos.epSq >= 0 ? squareName(pos.epSq) : "-"} ${pos.fifty} ` +
+    `${1 + (pos.hply >> 1)}`;
 }
 
 /* ---- Move notation -------------------------------------------------
    UCI moves are "e2e4", "e7e8q". Castling is "e1g1" in standard chess
    and king-takes-rook ("e1h1") in Chess960. */
-function moveToUci(m) {
+function moveToUci(m, chess960) {
   const from = moveFrom(m);
-  let to = moveTo(m);
-  if (moveFlag(m) === FLAG_CASTLE && !chess960)
-    to = castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)];
-  const promotion = movePromo(m)
-    ? PIECE_CHARS[movePromo(m) | 8]
-    : "";
+  const to = moveFlag(m) === FLAG_CASTLE && !chess960
+    ? castleKingTo[(from >> 6) * 2 + (moveTo(m) > from ? 0 : 1)]
+    : moveTo(m);
+  const promotion = movePromo(m) ? PIECE_CHARS[movePromo(m) | 8] : "";
   return squareName(from) + squareName(to) + promotion;
 }
 
-function parseMove(str) {
-  for (const m of legalMoves()) {
-    if (moveToUci(m) === str) return m;
-    if (moveFlag(m) === FLAG_CASTLE) {
-      // Accept the other castling notation too.
-      const from = moveFrom(m), to = moveTo(m);
-      const castleTo = chess960
-        ? castleKingTo[(from >> 6) * 2 + (to > from ? 0 : 1)]
-        : to;
-      const other = squareName(from) + squareName(castleTo);
-      if (other === str) return m;
-    }
+/* The legal move of pos written as `str`, or 0. Castling is accepted
+   in either notation. */
+function parseMove(pos, str, chess960) {
+  for (const m of legalMoves(pos)) {
+    if (moveToUci(m, chess960) === str) return m;
+    if (moveFlag(m) === FLAG_CASTLE && moveToUci(m, !chess960) === str)
+      return m;
   }
   return 0;
 }
 
-function legalMoves() {
-  const moves = [];
-  const first = MAX_PLY * MAX_MOVES, last = generateMoves(first);
-  for (let i = first; i < last; i++) {
-    const move = moveStack[i];
-    if (makeMove(move)) {
-      unmakeMove();
-      moves.push(move);
-    }
-  }
-  return moves;
+/* The legal moves of pos, as a new array. */
+function legalMoves(pos) {
+  return generateMoves(pos).filter((move) => {
+    if (!makeMove(pos, move)) return false;
+    unmakeMove(pos);
+    return true;
+  });
 }
 
 /* ---- Move generation ---------------------------------------------
@@ -877,9 +900,7 @@ function legalMoves() {
    Pseudo-legal generation: moves may leave the king in check, and
    makeMove() rejects those. Pieces move by adding an offset to a
    0x88 square; knights and kings step once, sliders keep stepping
-   until they hit something or leave the board. Moves are written
-   into moveStack from index `first`; the index after the last one
-   is returned.
+   until they hit something or leave the board.
 */
 
 const KNIGHT_OFFSETS = [-33, -31, -18, -14, 14, 18, 31, 33];
@@ -891,19 +912,20 @@ const PIECE_OFFSETS = [
   ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS
 ];
 
-/* Generate pseudo-legal moves for the current position and side to move.
-   `first` is a nonnegative integer index into moveStack, with room for
-   MAX_MOVES entries. Callers use ply * MAX_MOVES for a search/perft ply,
-   or MAX_PLY * MAX_MOVES for the legalMoves() scratch slice.
-   Writes packed moves starting at `first` and returns the exclusive end
-   index: moves occupy [first, end), and their count is end - first.
-   With no moves, returns `first`. King safety is checked by makeMove(). */
-function generateMoves(first) {
-  let n = first;
-  const us = side, them = side ^ 1;
+/* The pseudo-legal moves of pos for the side to move, as a new array.
+   King safety is checked by makeMove(). */
+function generateMoves(pos) {
+  const board = pos.board, moves = [];
+  const us = pos.side, them = us ^ 1;
   const up = us === WHITE ? 16 : -16;
   const startRank = us === WHITE ? 1 : 6;
   const promoRank = us === WHITE ? 7 : 0;
+  const pawnMove = (from, to, flag) => {
+    if ((to >> 4) === promoRank) {
+      for (let pr = QUEEN; pr >= KNIGHT; pr--)
+        moves.push(encodeMove(from, to, pr, 0));
+    } else moves.push(encodeMove(from, to, 0, flag));
+  };
 
   for (let s = 0; s < 128; s++) {
     if (s & 0x88) { s += 7; continue; }
@@ -912,41 +934,28 @@ function generateMoves(first) {
     const type = p & 7;
 
     if (type === PAWN) {
-      let to = s + up;
-      if (board[to] === EMPTY) {
-        if ((to >> 4) === promoRank) {
-          for (let pr = QUEEN; pr >= KNIGHT; pr--)
-            moveStack[n++] = encodeMove(s, to, pr, 0);
-        }
-        else {
-          moveStack[n++] = encodeMove(s, to, 0, 0);
-          if ((s >> 4) === startRank && board[to + up] === EMPTY)
-            moveStack[n++] = encodeMove(s, to + up, 0, 0);
-        }
+      const push = s + up;
+      if (board[push] === EMPTY) {
+        pawnMove(s, push, 0);
+        if ((s >> 4) === startRank && board[push + up] === EMPTY)
+          pawnMove(s, push + up, 0);
       }
-      for (let d = -1; d <= 1; d += 2) {
-        to = s + up + d;
+      for (let to = push - 1; to <= push + 1; to += 2) { // the two captures
         if (to & 0x88) continue;
         const c = board[to];
-        if (c !== EMPTY && (c >> 3) === them) {
-          if ((to >> 4) === promoRank) {
-            for (let pr = QUEEN; pr >= KNIGHT; pr--)
-              moveStack[n++] = encodeMove(s, to, pr, 0);
-          }
-          else moveStack[n++] = encodeMove(s, to, 0, 0);
-        } else if (to === epSq) moveStack[n++] = encodeMove(s, to, 0, FLAG_EP);
+        if (c !== EMPTY && (c >> 3) === them) pawnMove(s, to, 0);
+        else if (to === pos.epSq) pawnMove(s, to, FLAG_EP);
       }
       continue;
     }
 
-    const offsets = PIECE_OFFSETS[type];
     const slides = type >= BISHOP && type <= QUEEN;
-    for (let i = 0; i < offsets.length; i++) {
-      for (let to = s + offsets[i]; !(to & 0x88); to += offsets[i]) {
+    for (const offset of PIECE_OFFSETS[type]) {
+      for (let to = s + offset; !(to & 0x88); to += offset) {
         const c = board[to];
-        if (c === EMPTY) moveStack[n++] = encodeMove(s, to, 0, 0);
+        if (c === EMPTY) moves.push(encodeMove(s, to, 0, 0));
         else {
-          if ((c >> 3) === them) moveStack[n++] = encodeMove(s, to, 0, 0);
+          if ((c >> 3) === them) moves.push(encodeMove(s, to, 0, 0));
           break;
         }
         if (!slides) break;
@@ -958,8 +967,8 @@ function generateMoves(first) {
   // rook pass over or land on must be empty, apart from the two of
   // them, and the king may not start in, pass through or end in check.
   for (let c = us * 2; c < us * 2 + 2; c++) {
-    if (!(castling & (1 << c))) continue;
-    const kFrom = kingSq[us], rFrom = castleRookSq[c];
+    if (!(pos.castling & (1 << c))) continue;
+    const kFrom = pos.kingSq[us], rFrom = pos.castleRookSq[c];
     const kTo = castleKingTo[c], rTo = castleRookTo[c];
     const lo = Math.min(kFrom, kTo, rFrom, rTo);
     const hi = Math.max(kFrom, kTo, rFrom, rTo);
@@ -969,21 +978,22 @@ function generateMoves(first) {
     }
     const step = kTo > kFrom ? 1 : -1;
     for (let s = kFrom; ok && s !== kTo + step; s += step) {
-      if (isAttacked(s, them)) ok = false;
+      if (isAttacked(pos, s, them)) ok = false;
     }
-    if (ok) moveStack[n++] = encodeMove(kFrom, rFrom, 0, FLAG_CASTLE);
+    if (ok) moves.push(encodeMove(kFrom, rFrom, 0, FLAG_CASTLE));
   }
-  return n;
+  return moves;
 }
 
 /* ---- Attacks -----------------------------------------------------
 
-   Is square s attacked by colour `by`? We look outward from s: is
-   there a pawn/knight/king of that colour at the right offset, and
-   along each of the eight rays, is the first piece we meet a slider
-   that moves this way?
+   Is square s of pos attacked by colour `by`? We look outward from
+   s: is there a pawn/knight/king of that colour at the right offset,
+   and along each of the eight rays, is the first piece we meet a
+   slider that moves this way?
 */
-function isAttacked(s, by) {
+function isAttacked(pos, s, by) {
+  const board = pos.board;
   const c = by << 3;
   const pawn = PAWN | c, knight = KNIGHT | c, king = KING | c;
   if (by === WHITE) {
@@ -1026,33 +1036,42 @@ function isAttacked(s, by) {
    equal positions always have equal keys. The key is used to detect
    repetitions and to seed the Skill_Seed noise; a transposition
    table would be its third customer.
+
+   The numbers come from a fixed-seed xorshift generator, so every
+   machine gets the same keys (and so the same skill-level choices).
 */
-let rngState = 0x2545F491;
-function rand32() {
-  let x = rngState;
-  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
-  rngState = x;
-  return x | 0;
-}
-
-const zobPieceLo = new Int32Array(16 * 128);
-const zobPieceHi = new Int32Array(16 * 128);
-const zobCastleLo = new Int32Array(16), zobCastleHi = new Int32Array(16);
-const zobEpLo = new Int32Array(8), zobEpHi = new Int32Array(8);
-let zobSideLo = 0, zobSideHi = 0;
-
-function initZobrist() {
+function zobristKeys(seed) {
+  let state = seed;
+  const rand32 = () => {
+    let x = state;
+    x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+    state = x;
+    return x | 0;
+  };
+  const zobPieceLo = new Int32Array(16 * 128);
+  const zobPieceHi = new Int32Array(16 * 128);
   for (let i = 0; i < 16 * 128; i++) {
     zobPieceLo[i] = rand32();
     zobPieceHi[i] = rand32();
   }
+  const zobCastleLo = new Int32Array(16), zobCastleHi = new Int32Array(16);
   for (let i = 0; i < 16; i++) {
     zobCastleLo[i] = rand32();
     zobCastleHi[i] = rand32();
   }
+  const zobEpLo = new Int32Array(8), zobEpHi = new Int32Array(8);
   for (let i = 0; i < 8; i++) { zobEpLo[i] = rand32(); zobEpHi[i] = rand32(); }
-  zobSideLo = rand32(); zobSideHi = rand32();
+  const zobSideLo = rand32(), zobSideHi = rand32();
+  return {
+    zobPieceLo, zobPieceHi, zobCastleLo, zobCastleHi,
+    zobEpLo, zobEpHi, zobSideLo, zobSideHi,
+  };
 }
+
+const {
+  zobPieceLo, zobPieceHi, zobCastleLo, zobCastleHi,
+  zobEpLo, zobEpHi, zobSideLo, zobSideHi,
+} = zobristKeys(0x2545F491);
 
 /* ================================================================
    S6  UCI
@@ -1060,39 +1079,51 @@ function initZobrist() {
 
    The Universal Chess Interface: a GUI (or a match manager such as
    cutechess or OpenBench) writes commands on one line each, and we
-   answer in kind. uciCommand() handles one line. The surrounding
-   I/O code at the end of the file wires it to stdin/stdout in Bun
-   or to postMessage in a browser Web Worker.
+   answer in kind.
+
+   Everything the engine remembers between commands is one session
+   value: { pos, skill, chess960 }. uciCommand(session, line, io)
+   handles one line and returns the session for the next one. `io`
+   is how it talks to the world: { out(line), now(), shouldStop() }.
+   The I/O code at the end of the file wires it to stdin/stdout in
+   Bun or to postMessage in a browser Web Worker.
 */
 
-let out = (line) => console.log(line);
+function newSession() {
+  return {
+    pos: positionFromFen(START_FEN),
+    skill: skillFor(SKILL_MAX, 0),
+    chess960: false,
+  };
+}
 
-function uciCommand(line) {
+function uciCommand(session, line, io) {
   const tokens = line.trim().split(/\s+/);
+  const { pos, skill, chess960 } = session;
   switch (tokens[0]) {
     case "uci":
-      out(`id name ${NAME} ${VERSION}`);
-      out("id author Copilot (Claude Fable 5.1)");
+      io.out(`id name ${NAME} ${VERSION}`);
+      io.out("id author Copilot (Claude Fable 5.1)");
       // ---- UCI options ------------------------------------------------
       // Accepted, no effect: there is no transposition table yet.
-      out("option name Hash type spin default 16 min 1 max 1024");
+      io.out("option name Hash type spin default 16 min 1 max 1024");
 
       // Accepted for OpenBench; always single-threaded.
-      out("option name Threads type spin default 1 min 1 max 1");
+      io.out("option name Threads type spin default 1 min 1 max 1");
 
       // Castling notation: king-takes-rook.
-      out("option name UCI_Chess960 type check default false");
+      io.out("option name UCI_Chess960 type check default false");
 
-      out(
+      io.out(
         `option name Skill_Level type spin default ${SKILL_MAX} ` +
         `min 1 max ${SKILL_MAX}`
       ); // 1 = random mover, SKILL_MAX = full strength
 
       // Which deterministic opponent; 0 = built-in.
-      out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
+      io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
 
-      out("uciok");
-      break;
+      io.out("uciok");
+      return session;
     case "setoption": {
       const nameAt = tokens.indexOf("name"), valueAt = tokens.indexOf("value");
       const name = tokens
@@ -1100,88 +1131,124 @@ function uciCommand(line) {
         .join(" ")
         .toLowerCase();
       const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
-      if (name === "uci_chess960") chess960 = value.toLowerCase() === "true";
-      else if (name === "skill_level")
-        setSkillLevel(parseInt(value) || SKILL_MAX);
-      else if (name === "skill_seed") setSkillSeed(parseInt(value) || 0);
-      // "hash" and "threads" are accepted and ignored
-      break;
+      if (name === "uci_chess960")
+        return { ...session, chess960: value.toLowerCase() === "true" };
+      if (name === "skill_level")
+        return { ...session, skill: skillFor(parseInt(value) || SKILL_MAX, skill.seed) };
+      if (name === "skill_seed")
+        return { ...session, skill: skillFor(skill.level, parseInt(value) || 0) };
+      return session; // "hash" and "threads" are accepted and ignored
     }
-    case "isready": out("readyok"); break;
-    case "ucinewgame": setPosition(START_FEN); break;
-    case "position": {
-      const movesAt = tokens.indexOf("moves");
-      if (tokens[1] === "fen") {
-        setPosition(
-          tokens.slice(2, movesAt > 0 ? movesAt : undefined).join(" ")
-        );
-      }
-      else setPosition(START_FEN);
-      if (movesAt > 0) {
-        for (const str of tokens.slice(movesAt + 1)) {
-          const m = parseMove(str);
-          if (m) makeMove(m);
-        }
-      }
-      break;
-    }
+    case "isready":
+      io.out("readyok");
+      return session;
+    case "ucinewgame":
+      return { ...session, pos: positionFromFen(START_FEN) };
+    case "position":
+      return { ...session, pos: positionFromUci(tokens.slice(1).join(" "), chess960) };
     case "go": {
-      const go = {};
-      for (let i = 1; i < tokens.length; i++) {
-        const key = tokens[i], value = parseInt(tokens[i + 1]);
-        if (key === "infinite") go.infinite = true;
-        else if (!isNaN(value)) { go[key] = value; i++; }
-      }
-      setLimits(go);
-      think();
-      break;
+      const result = think(pos, limitsFor(parseGo(tokens), pos.side, skill.level), skill, {
+        now: io.now,
+        shouldStop: io.shouldStop,
+        onInfo: (info) => io.out(infoLine(info, chess960)),
+      });
+      io.out("bestmove " + (result.bestMove ? moveToUci(result.bestMove, chess960) : "0000"));
+      return session;
     }
     case "stop":
-      break; // handled by the I/O layer while searching
+      return session; // handled by the I/O layer while searching
     case "quit":
-      out("quit");
-      break; // echoed back so the I/O layer knows the queue is drained
-    case "bench": bench(parseInt(tokens[1]) || BENCH_DEPTH); break;
-    case "perft": perftDivide(parseInt(tokens[1]) || 4); break;
-    case "d": display(); break;
-    case "eval": out(`eval ${evaluate()} (side to move)`); break;
+      io.out("quit"); // echoed back so the I/O layer knows the queue is drained
+      return session;
+    case "bench":
+      bench(parseInt(tokens[1]) || BENCH_DEPTH, io);
+      return session;
+    case "perft":
+      perftDivide(pos, parseInt(tokens[1]) || 4, chess960, io);
+      return session;
+    case "d":
+      display(pos, skill, chess960, io.out);
+      return session;
+    case "eval":
+      io.out(`eval ${judge(pos, skill)} (side to move)`);
+      return session;
+    default:
+      return session;
   }
 }
 
+/* A new position from the arguments of a UCI "position" command:
+   "startpos" or "fen <FEN>", optionally followed by "moves ...". */
+function positionFromUci(spec, chess960) {
+  const tokens = spec.trim().split(/\s+/);
+  const movesAt = tokens.indexOf("moves");
+  const fen = tokens[0] === "fen"
+    ? tokens.slice(1, movesAt >= 0 ? movesAt : undefined).join(" ")
+    : START_FEN;
+  const pos = positionFromFen(fen);
+  for (const str of movesAt >= 0 ? tokens.slice(movesAt + 1) : []) {
+    const m = parseMove(pos, str, chess960);
+    if (m) makeMove(pos, m);
+  }
+  return pos;
+}
+
+/* The numbers of a "go" command, e.g. { wtime: 60000, winc: 1000 }. */
+function parseGo(tokens) {
+  const go = {};
+  for (let i = 1; i < tokens.length; i++) {
+    const key = tokens[i], value = parseInt(tokens[i + 1]);
+    if (key === "infinite") go.infinite = true;
+    else if (!isNaN(value)) { go[key] = value; i++; }
+  }
+  return go;
+}
+
+/* The UCI "info" line for one finished depth of think(). */
+function infoLine(result, chess960) {
+  const { depth, score, nodes, elapsed, pv } = result;
+  const nps = elapsed > 0 ? Math.round(nodes * 1000 / elapsed) : 0;
+  const scoreText = Math.abs(score) >= MATE_IN_MAX
+    ? "mate " + (score > 0 ? (MATE - score + 1) >> 1 : -((MATE + score) >> 1))
+    : "cp " + score;
+  const line = pv.map((m) => " " + moveToUci(m, chess960)).join("");
+  return `info depth ${depth} multipv 1 score ${scoreText} nodes ${nodes} ` +
+    `nps ${nps} time ${Math.round(elapsed)} pv${line}`;
+}
+
 /* ---- Perft: count leaf nodes to a depth; the standard way to test a
-   move generator. */
-function perft(depth, ply) {
+   move generator. pos is handed back unchanged. */
+function perft(pos, depth) {
   if (depth === 0) return 1;
   let count = 0;
-  const first = ply * MAX_MOVES, last = generateMoves(first);
-  for (let i = first; i < last; i++) {
-    if (!makeMove(moveStack[i])) continue;
-    count += depth === 1 ? 1 : perft(depth - 1, ply + 1);
-    unmakeMove();
+  for (const m of generateMoves(pos)) {
+    if (!makeMove(pos, m)) continue;
+    count += perft(pos, depth - 1);
+    unmakeMove(pos);
   }
   return count;
 }
 
-function perftDivide(depth) {
-  const t0 = now();
+function perftDivide(pos, depth, chess960, io) {
+  const t0 = io.now();
   let total = 0;
-  for (const m of legalMoves()) {
-    makeMove(m);
-    const count = perft(depth - 1, 1);
-    unmakeMove();
+  for (const m of legalMoves(pos)) {
+    makeMove(pos, m);
+    const count = perft(pos, depth - 1);
+    unmakeMove(pos);
     total += count;
-    out(`${moveToUci(m)}: ${count}`);
+    io.out(`${moveToUci(m, chess960)}: ${count}`);
   }
-  const ms = now() - t0;
-  out(
+  const ms = io.now() - t0;
+  io.out(
     `perft ${depth} nodes ${total} time ${Math.round(ms)} ` +
     `nps ${Math.round(total * 1000 / Math.max(1, ms))}`
   );
 }
 
-/* ---- Bench: a fixed set of positions to a fixed depth. OpenBench
-   reads the final "N nodes M nps" line and uses the node count as a
-   signature of the search. */
+/* ---- Bench: a fixed set of positions to a fixed depth, at full
+   strength. OpenBench reads the final "N nodes M nps" line and uses
+   the node count as a signature of the search. */
 const BENCH_DEPTH = 5;
 const BENCH_FENS = [
   START_FEN,
@@ -1198,40 +1265,37 @@ const BENCH_FENS = [
   "1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1",
 ];
 
-function bench(depth) {
-  const savedOut = out, savedLevel = skillLevel;
-  setSkillLevel(SKILL_MAX);
+function bench(depth, io) {
+  const skill = skillFor(SKILL_MAX, 0);
   let totalNodes = 0, totalMs = 0;
   for (const fen of BENCH_FENS) {
-    setPosition(fen);
-    setLimits({ depth });
-    out = () => {};
-    const t0 = now();
-    think();
-    totalMs += now() - t0;
-    out = savedOut;
+    const pos = positionFromFen(fen);
+    const t0 = io.now();
+    const { nodes } = think(pos, limitsFor({ depth }, pos.side, SKILL_MAX), skill, {
+      now: io.now, shouldStop: () => false, onInfo: () => {},
+    });
+    totalMs += io.now() - t0;
     totalNodes += nodes;
-    out(`info string ${nodes} nodes  ${fen}`);
+    io.out(`info string ${nodes} nodes  ${fen}`);
   }
-  setSkillLevel(savedLevel);
-  out(
+  io.out(
     `${totalNodes} nodes ` +
     `${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`
   );
 }
 
-function display() {
+function display(pos, skill, chess960, out) {
   for (let r = 7; r >= 0; r--) {
     let row = `${r + 1} `;
-    for (let f = 0; f < 8; f++) row += " " + PIECE_CHARS[board[r * 16 + f]];
+    for (let f = 0; f < 8; f++) row += " " + PIECE_CHARS[pos.board[r * 16 + f]];
     out(row);
   }
   out("   a b c d e f g h");
-  out(`fen ${toFen()}`);
-  const key = ((keyHi >>> 0).toString(16)).padStart(8, "0") +
-    ((keyLo >>> 0).toString(16)).padStart(8, "0");
+  out(`fen ${toFen(pos, chess960)}`);
+  const key = ((pos.keyHi >>> 0).toString(16)).padStart(8, "0") +
+    ((pos.keyLo >>> 0).toString(16)).padStart(8, "0");
   out(`key ${key}`);
-  out(`eval ${evaluate()} (side to move)`);
+  out(`eval ${judge(pos, skill)} (side to move)`);
 }
 
 /* ---- Start-up and I/O ---------------------------------------------
@@ -1243,15 +1307,13 @@ function display() {
    Search is synchronous: the worker cannot process another message
    until think() returns. A posted "stop" message would therefore
    arrive too late. Instead, the main thread sets a stop flag in a
-   SharedArrayBuffer and checkLimits() polls it during search.
-   Atomics.store/load synchronize that shared flag across threads;
-   they do not make the search parallel. Ordinary commands and
-   results still travel through worker messages. */
-initZobrist();
-initEvaluation();
-setSkillSeed(0);
-setPosition(START_FEN);
+   SharedArrayBuffer and the worker's shouldStop() polls it during
+   search. Atomics.store/load synchronize that shared flag across
+   threads; they do not make the search parallel. Ordinary commands
+   and results still travel through worker messages.
 
+   Each host below keeps the current session in its own `let session`
+   and replaces it with whatever uciCommand() returns. */
 const isBun = typeof Bun !== "undefined";
 const inWorker = isBun ? !Bun.isMainThread
   : typeof WorkerGlobalScope !== "undefined" &&
@@ -1260,7 +1322,8 @@ const inWorker = isBun ? !Bun.isMainThread
 if (isBun && Bun.isMainThread) {
   if (process.argv[2] === "bench") {
     // `bun pedagog.js bench [depth]`, as OpenBench runs it.
-    uciCommand("bench " + (process.argv[3] || ""));
+    const io = { out: (line) => console.log(line), now, shouldStop: () => false };
+    uciCommand(newSession(), "bench " + (process.argv[3] || ""), io);
     process.exit(0);
   }
   const flag = new Int32Array(new SharedArrayBuffer(4));
@@ -1287,12 +1350,22 @@ if (isBun && Bun.isMainThread) {
     // Stdin closed: let the worker finish its queue, then exit.
   })();
 } else if (inWorker) {
-  out = (line) => self.postMessage(line);
+  let session = newSession(), stopFlag = null;
+  const io = {
+    out: (line) => self.postMessage(line),
+    now,
+    shouldStop: () => stopFlag !== null && Atomics.load(stopFlag, 0) !== 0,
+  };
   self.onmessage = (e) => {
-    if (typeof e.data === "string") uciCommand(e.data);
+    if (typeof e.data === "string") session = uciCommand(session, e.data, io);
     else if (e.data && e.data.stopFlag) stopFlag = e.data.stopFlag;
   };
 } else {
   // Browser main thread (or any other host): drive it by hand.
-  globalThis.Pedagog = { uci: uciCommand, setOutput: (fn) => { out = fn; } };
+  let session = newSession(), output = (line) => console.log(line);
+  const io = { out: (line) => output(line), now, shouldStop: () => false };
+  globalThis.Pedagog = {
+    uci: (line) => { session = uciCommand(session, line, io); },
+    setOutput: (fn) => { output = fn; },
+  };
 }

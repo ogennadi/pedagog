@@ -290,8 +290,10 @@ The original development suite used an isolated VM harness and frozen
 transcript fixtures to exercise search, UCI, fake-clock timing, evaluation,
 perft, and make/unmake behavior. Those additional unit tests and fixtures have
 since been removed. The retained `bun test` suite runs `tests/rules.test.js`,
-which checks move legality, state restoration, draw detection, and perft; it
-does not claim current search or UCI regression coverage.
+which checks move legality, state restoration, draw detection, and perft,
+plus a few search and UCI-session checks (mate in one, interrupted search,
+time limits, options carrying over between commands); it is not a full
+search or UCI regression suite.
 
 Verification done during the session: perft to depth 4–5 on six standard
 positions and eight Chess960 positions (all 58 node counts correct, ~10 M
