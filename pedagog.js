@@ -104,14 +104,14 @@ const DRAW = 0;
 
 const FLAG_EP = 1, FLAG_CASTLE = 2;
 
-const moveFrom = (m) => m & 127;
-const moveTo = (m) => (m >> 7) & 127;
-const movePromo = (m) => (m >> 14) & 7;
-const moveFlag = (m) => (m >> 17) & 3;
+const moveFrom = (move) => move & 127;
+const moveTo = (move) => (move >> 7) & 127;
+const movePromo = (move) => (move >> 14) & 7;
+const moveFlag = (move) => (move >> 17) & 3;
 const encodeMove = (from, to, promo, flag) =>
   from | (to << 7) | (promo << 14) | (flag << 17);
 
-const squareName = (s) => "abcdefgh"[s & 7] + ((s >> 4) + 1);
+const squareName = (sq) => "abcdefgh"[sq & 7] + ((sq >> 4) + 1);
 const parseSquare = (str) =>
   (str.charCodeAt(1) - 49) * 16 + (str.charCodeAt(0) - 97);
 
@@ -190,10 +190,7 @@ function think(pos, limits, skill, io) {
     rootDepth = depth;
     const { score, pv } = search(pos, -INF, INF, depth, 0);
     if (stopped) break; // an interrupted depth cannot replace `best`
-    best = {
-      bestMove: pv[0], depth, score, nodes,
-      elapsed: io.now() - startTime, pv,
-    };
+    best = { bestMove: pv[0], depth, score, nodes, elapsed: io.now() - startTime, pv };
     io.onInfo(best);
     if (best.elapsed > limits.softMs) break;
   }
@@ -203,16 +200,14 @@ function think(pos, limits, skill, io) {
      finishes, so there is always a move to play. */
   function limitReached() {
     return (limits.nodes > 0 && nodes >= limits.nodes) ||
-      io.now() - startTime >= limits.hardMs ||
-      io.shouldStop();
+      io.now() - startTime >= limits.hardMs || io.shouldStop();
   }
 
   /* Negamax to a fixed depth: terminate, try moves, keep the best line,
      and stop at a beta cutoff. */
   function search(pos, alpha, beta, depth, ply) {
     nodes++;
-    if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached())
-      stopped = true;
+    if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached()) stopped = true;
     if (stopped) return { score: 0, pv: NO_LINE };
     if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
     if (depth === 0 || ply >= MAX_PLY - 1)
@@ -242,8 +237,7 @@ function think(pos, limits, skill, io) {
       }
     }
 
-    if (legalMoveCount === 0)
-      return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
+    if (legalMoveCount === 0) return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
     if (searchedMoveCount === 0) // overlooked every legal move
       return { score: judge(pos, skill), pv: NO_LINE };
     return { score: bestScore, pv };
@@ -260,10 +254,10 @@ function think(pos, limits, skill, io) {
    next refinement; see COLOPHON.md. Returns a new array. */
 function orderMoves(pos, moves) {
   const board = pos.board, early = [], late = [];
-  for (const m of moves) {
-    if (board[moveTo(m)] !== EMPTY || moveFlag(m) === FLAG_EP || movePromo(m) !== 0)
-      early.push(m);
-    else late.push(m);
+  for (const move of moves) {
+    if (board[moveTo(move)] !== EMPTY || moveFlag(move) === FLAG_EP || movePromo(move) !== 0)
+      early.push(move);
+    else late.push(move);
   }
   return early.concat(late);
 }
@@ -376,12 +370,12 @@ const LADDER = [
    Level 1 has no rung; it borrows full strength's (unused) knobs. */
 function skillFor(level, seed) {
   const clamped = Math.min(SKILL_MAX, Math.max(1, level | 0));
-  const s = seed | 0;
+  const seedInt = seed | 0;
   return Object.freeze({
     ...(LADDER[clamped - 1] || LADDER[SKILL_MAX - 1]),
     level: clamped,
-    seed: s,
-    seedKey: mix32(s === 0 ? 0x9E3779B9 : s),
+    seed: seedInt,
+    seedKey: mix32(seedInt === 0 ? 0x9E3779B9 : seedInt),
   });
 }
 
@@ -389,8 +383,8 @@ function skillFor(level, seed) {
    rung's share of positions, decided by the hash. */
 function skillDepth(pos, skill) {
   if (skill.deeperPermille === 0) return skill.depth;
-  const h = mix32(keyLow(pos.key) ^ skill.seedKey ^ 0xA5A55A5A);
-  return skill.depth + (h % 1000 < skill.deeperPermille ? 1 : 0);
+  const hash = mix32(keyLow(pos.key) ^ skill.seedKey ^ 0xA5A55A5A);
+  return skill.depth + (hash % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
 /* What this skill makes of `pos`: the evaluation plus, now and then,
@@ -405,41 +399,40 @@ function judge(pos, skill) {
    not from evaluate(). */
 function blunder(pos, skill) {
   if (skill.blunderWindow === 0) return 0;
-  const h = mix32(keyLow(pos.key) ^ Math.imul(keyHigh(pos.key), 0x9E3779B9) ^ skill.seedKey);
-  if (h % 1000 >= skill.blunderPermille) return 0;
-  return (mix32(h) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
+  const hash = mix32(keyLow(pos.key) ^ Math.imul(keyHigh(pos.key), 0x9E3779B9) ^ skill.seedKey);
+  if (hash % 1000 >= skill.blunderPermille) return 0;
+  return (mix32(hash) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
 }
 
-/* Does the player notice move m, made `ply` plies below the root?
+/* Does the player notice `move`, made `ply` plies below the root?
    `after` is the position the move leads to, so its key and whether
    the move gives check are known. */
-function seesMove(after, skill, m, ply) {
+function seesMove(after, skill, move, ply) {
   if (skill.vision >= FULL_VISION) return true;
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
-  const h = mix32(keyLow(after.key) ^ Math.imul(m, 0x9E3779B9) ^ skill.seedKey);
-  if (((h >>> 20) & 1023) < chance) return true;
-  const easy = after.captured !== EMPTY || moveFlag(m) === FLAG_EP ||
-    inCheck(after);
-  return easy && ((h >>> 8) & 1023) < chance;
+  const hash = mix32(keyLow(after.key) ^ Math.imul(move, 0x9E3779B9) ^ skill.seedKey);
+  if (((hash >>> 20) & 1023) < chance) return true;
+  const easy = after.captured !== EMPTY || moveFlag(move) === FLAG_EP || inCheck(after);
+  return easy && ((hash >>> 8) & 1023) < chance;
 }
 
 /* The root moves the player overlooks. If it would overlook them all,
    it sees them all: a move has to be played. */
 function overlookedRootMoves(pos, skill, rootMoves) {
   if (skill.vision >= FULL_VISION) return [];
-  const unseen = rootMoves.filter((m) => !seesMove(makeMove(pos, m), skill, m, 0));
+  const unseen = rootMoves.filter((move) => !seesMove(makeMove(pos, move), skill, move, 0));
   return unseen.length === rootMoves.length ? [] : unseen;
 }
 
 /* Level 1: a random legal move from `moves`, unless one mates on the
    spot. */
 function randomMove(pos, skill, moves) {
-  return moves.find((m) => givesMate(pos, m)) ??
+  return moves.find((move) => givesMate(pos, move)) ??
     moves[mix32(keyLow(pos.key) ^ skill.seedKey) % moves.length];
 }
 
-function givesMate(pos, m) {
-  const after = makeMove(pos, m);
+function givesMate(pos, move) {
+  const after = makeMove(pos, move);
   return legalMoves(after).length === 0 && inCheck(after);
 }
 
@@ -477,29 +470,16 @@ const PHASE_INC = [0, 0, 1, 1, 2, 4, 0];
 /* Bonus for a white piece of `type` on file f, rank r (0 = rank 1),
    as [middlegame, endgame]. */
 function squareBonus(type, f, r) {
-  const centre = 3 -
-    ((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) >> 1);
+  const centre = 3 - ((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) >> 1);
   const home = r === 0 ? -10 : 0; // nudge to develop
   switch (type) {
     case PAWN:
-      return [
-        (r - 1) * 3 +
-          ((f === 3 || f === 4) && (r === 3 || r === 4) ? 15 : 0),
-        (r - 1) * 12
-      ];
+      return [(r - 1) * 3 + ((f === 3 || f === 4) && (r === 3 || r === 4) ? 15 : 0), (r - 1) * 12];
     case KNIGHT: return [centre * 12 - 24 + home, centre * 12 - 24];
     case BISHOP: return [centre * 6 - 12 + home, centre * 6 - 12];
-    case ROOK:
-      return [
-        (f === 3 || f === 4 ? 5 : 0) + (r === 6 ? 15 : 0),
-        r === 6 ? 15 : 0
-      ];
+    case ROOK: return [(f === 3 || f === 4 ? 5 : 0) + (r === 6 ? 15 : 0), r === 6 ? 15 : 0];
     case QUEEN:  return [centre * 3 - 6, centre * 5 - 10];
-    case KING:
-      return [
-        -Math.min(r, 3) * 25 + (f <= 2 || f >= 5 ? 20 : -10),
-        centre * 15 - 30
-      ];
+    case KING: return [-Math.min(r, 3) * 25 + (f <= 2 || f >= 5 ? 20 : -10), centre * 15 - 30];
   }
 }
 
@@ -509,13 +489,13 @@ function squareBonus(type, f, r) {
 function placementTables() {
   const mgTable = new Int16Array(16 * 128), egTable = new Int16Array(16 * 128);
   for (let type = PAWN; type <= KING; type++) {
-    for (let s = 0; s < 128; s++) {
-      if (s & 0x88) continue;
-      const [mg, eg] = squareBonus(type, s & 7, s >> 4);
-      mgTable[type * 128 + s] = mg;
-      egTable[type * 128 + s] = eg;
-      mgTable[(type | 8) * 128 + (s ^ 0x70)] = -mg;
-      egTable[(type | 8) * 128 + (s ^ 0x70)] = -eg;
+    for (let sq = 0; sq < 128; sq++) {
+      if (sq & 0x88) continue;
+      const [mg, eg] = squareBonus(type, sq & 7, sq >> 4);
+      mgTable[type * 128 + sq] = mg;
+      egTable[type * 128 + sq] = eg;
+      mgTable[(type | 8) * 128 + (sq ^ 0x70)] = -mg;
+      egTable[(type | 8) * 128 + (sq ^ 0x70)] = -eg;
     }
   }
   return [mgTable, egTable];
@@ -527,13 +507,13 @@ const [PLACE_MG, PLACE_EG] = placementTables();
 function evaluate(pos) {
   const board = pos.board;
   let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
-  for (let s = 0; s < 128; s++) {
-    if (s & 0x88) { s += 7; continue; }
-    const p = board[s];
-    if (p === EMPTY) continue;
-    const type = p & 7, sign = p < 8 ? 1 : -1;
-    mg += sign * MG_VALUE[type] + PLACE_MG[p * 128 + s];
-    eg += sign * EG_VALUE[type] + PLACE_EG[p * 128 + s];
+  for (let sq = 0; sq < 128; sq++) {
+    if (sq & 0x88) { sq += 7; continue; }
+    const piece = board[sq];
+    if (piece === EMPTY) continue;
+    const type = piece & 7, sign = piece < 8 ? 1 : -1;
+    mg += sign * MG_VALUE[type] + PLACE_MG[piece * 128 + sq];
+    eg += sign * EG_VALUE[type] + PLACE_EG[piece * 128 + sq];
     phase += PHASE_INC[type];
   }
   // Taper from middlegame to endgame as material leaves the board.
@@ -605,20 +585,20 @@ function makeMove(pos, move) {
   let key = pos.key + (us === WHITE ? zobSide : -zobSide);
   let epSq = -1, fifty = pos.fifty + 1, captured = EMPTY;
 
-  // Take the piece off square s, or put piece p on square s, keeping
+  // Take the piece off square `sq`, or put `piece` on it, keeping
   // the piece counts, king squares and key in step with the board.
-  const lift = (s) => {
-    const p = board[s];
-    board[s] = EMPTY;
-    pieceCount[p]--;
-    key -= zobPiece[p * 128 + s];
-    return p;
+  const lift = (sq) => {
+    const piece = board[sq];
+    board[sq] = EMPTY;
+    pieceCount[piece]--;
+    key -= zobPiece[piece * 128 + sq];
+    return piece;
   };
-  const put = (s, p) => {
-    board[s] = p;
-    pieceCount[p]++;
-    key += zobPiece[p * 128 + s];
-    if ((p & 7) === KING) kingSq[p >> 3] = s;
+  const put = (sq, piece) => {
+    board[sq] = piece;
+    pieceCount[piece]++;
+    key += zobPiece[piece * 128 + sq];
+    if ((piece & 7) === KING) kingSq[piece >> 3] = sq;
   };
 
   if (pos.epSq >= 0) key -= zobEp[pos.epSq & 7];
@@ -667,12 +647,11 @@ function isDraw(pos) {
   if (pos.fifty >= 100) return true;
   // Earlier positions with the same side to move: 2, 4, 6... plies
   // back, but not past the last capture or pawn move.
-  for (let back = 2, p = pos.prev?.prev; p && back <= pos.fifty;
-    back += 2, p = p.prev?.prev)
-    if (p.key === pos.key) return true;
+  for (let back = 2, earlier = pos.prev?.prev; earlier && back <= pos.fifty;
+    back += 2, earlier = earlier.prev?.prev)
+    if (earlier.key === pos.key) return true;
   const n = pos.pieceCount;
-  return n[PAWN] + n[PAWN | 8] + n[ROOK] + n[ROOK | 8] +
-      n[QUEEN] + n[QUEEN | 8] === 0 &&
+  return n[PAWN] + n[PAWN | 8] + n[ROOK] + n[ROOK | 8] + n[QUEEN] + n[QUEEN | 8] === 0 &&
     n[KNIGHT] + n[KNIGHT | 8] + n[BISHOP] + n[BISHOP | 8] <= 1;
 }
 
@@ -696,11 +675,11 @@ function positionFromFen(fen) {
     } else if (ch >= "1" && ch <= "8") {
       file += ch.charCodeAt(0) - 48;
     } else {
-      const s = rank * 16 + file, p = PIECE_CHARS.indexOf(ch);
-      board[s] = p;
-      pieceCount[p]++;
-      key += zobPiece[p * 128 + s];
-      if ((p & 7) === KING) kingSq[p >> 3] = s;
+      const sq = rank * 16 + file, piece = PIECE_CHARS.indexOf(ch);
+      board[sq] = piece;
+      pieceCount[piece]++;
+      key += zobPiece[piece * 128 + sq];
+      if ((piece & 7) === KING) kingSq[piece >> 3] = sq;
       file++;
     }
   }
@@ -726,8 +705,8 @@ function castlingFromFen(board, kingSq, field) {
   // `rook` on the rank starting at `rankBase`; -1 if there is none.
   const outermostRook = (rankBase, rook, edge, kingFile) => {
     const step = edge < kingFile ? 1 : -1;
-    for (let f = edge; f !== kingFile; f += step)
-      if (board[rankBase + f] === rook) return f;
+    for (let file = edge; file !== kingFile; file += step)
+      if (board[rankBase + file] === rook) return file;
     return -1;
   };
 
@@ -740,15 +719,14 @@ function castlingFromFen(board, kingSq, field) {
     const rankBase = colour === WHITE ? 0 : 112;
     const rook = ROOK | (colour << 3);
     const kingFile = kingSq[colour] & 7, letter = ch.toUpperCase();
-    const rookFile =
-      letter === "K" ? outermostRook(rankBase, rook, 7, kingFile)
-        : letter === "Q" ? outermostRook(rankBase, rook, 0, kingFile)
-          : letter.charCodeAt(0) - 65;
+    const rookFile = letter === "K" ? outermostRook(rankBase, rook, 7, kingFile)
+      : letter === "Q" ? outermostRook(rankBase, rook, 0, kingFile)
+      : letter.charCodeAt(0) - 65;
     if (rookFile < 0 || board[rankBase + rookFile] !== rook) continue;
-    const c = colour * 2 + (rookFile > kingFile ? 0 : 1);
-    castling |= 1 << c;
-    rookSq[c] = rankBase + rookFile;
-    mask[rankBase + rookFile] &= ~(1 << c);
+    const right = colour * 2 + (rookFile > kingFile ? 0 : 1);
+    castling |= 1 << right;
+    rookSq[right] = rankBase + rookFile;
+    mask[rankBase + rookFile] &= ~(1 << right);
     mask[kingSq[colour]] &= ~(3 << (colour * 2));
   }
   return { castling, castle: { rookSq, mask } };
@@ -758,50 +736,48 @@ function castlingFromFen(board, kingSq, field) {
    only for Chess960 rooks that are not in the corners. */
 function toFen(pos, chess960) {
   let fen = "";
-  for (let r = 7; r >= 0; r--) {
+  for (let rank = 7; rank >= 0; rank--) {
     let empty = 0;
-    for (let f = 0; f < 8; f++) {
-      const p = pos.board[r * 16 + f];
-      if (p === EMPTY) empty++;
-      else { if (empty) fen += empty; empty = 0; fen += PIECE_CHARS[p]; }
+    for (let file = 0; file < 8; file++) {
+      const piece = pos.board[rank * 16 + file];
+      if (piece === EMPTY) empty++;
+      else { if (empty) fen += empty; empty = 0; fen += PIECE_CHARS[piece]; }
     }
     if (empty) fen += empty;
-    if (r) fen += "/";
+    if (rank) fen += "/";
   }
   let rights = "";
-  for (let c = 0; c < 4; c++) {
-    if (!(pos.castling & (1 << c))) continue;
-    const file = pos.castle.rookSq[c] & 7;
-    const standard = (c & 1) === 0 ? file === 7 : file === 0;
+  for (let right = 0; right < 4; right++) {
+    if (!(pos.castling & (1 << right))) continue;
+    const file = pos.castle.rookSq[right] & 7;
+    const standard = (right & 1) === 0 ? file === 7 : file === 0;
     const ch = chess960 && !standard
       ? "abcdefgh"[file]
-      : (c & 1) === 0 ? "k" : "q";
-    rights += c < 2 ? ch.toUpperCase() : ch;
+      : (right & 1) === 0 ? "k" : "q";
+    rights += right < 2 ? ch.toUpperCase() : ch;
   }
   return `${fen} ${pos.side === WHITE ? "w" : "b"} ${rights || "-"} ` +
-    `${pos.epSq >= 0 ? squareName(pos.epSq) : "-"} ${pos.fifty} ` +
-    `${1 + (pos.plies >> 1)}`;
+    `${pos.epSq >= 0 ? squareName(pos.epSq) : "-"} ${pos.fifty} ${1 + (pos.plies >> 1)}`;
 }
 
 /* ---- Move notation -------------------------------------------------
    UCI moves are "e2e4", "e7e8q". Castling is "e1g1" in standard chess
    and king-takes-rook ("e1h1") in Chess960. */
-function moveToUci(m, chess960) {
-  const from = moveFrom(m);
-  const to = moveFlag(m) === FLAG_CASTLE && !chess960
-    ? castleKingTo[(from >> 6) * 2 + (moveTo(m) > from ? 0 : 1)]
-    : moveTo(m);
-  const promotion = movePromo(m) ? PIECE_CHARS[movePromo(m) | 8] : "";
+function moveToUci(move, chess960) {
+  const from = moveFrom(move);
+  const to = moveFlag(move) === FLAG_CASTLE && !chess960
+    ? castleKingTo[(from >> 6) * 2 + (moveTo(move) > from ? 0 : 1)]
+    : moveTo(move);
+  const promotion = movePromo(move) ? PIECE_CHARS[movePromo(move) | 8] : "";
   return squareName(from) + squareName(to) + promotion;
 }
 
 /* The legal move of pos written as `str`, or 0. Castling is accepted
    in either notation. */
 function parseMove(pos, str, chess960) {
-  for (const m of legalMoves(pos)) {
-    if (moveToUci(m, chess960) === str) return m;
-    if (moveFlag(m) === FLAG_CASTLE && moveToUci(m, !chess960) === str)
-      return m;
+  for (const move of legalMoves(pos)) {
+    if (moveToUci(move, chess960) === str) return move;
+    if (moveFlag(move) === FLAG_CASTLE && moveToUci(move, !chess960) === str) return move;
   }
   return 0;
 }
@@ -824,8 +800,7 @@ const BISHOP_OFFSETS = [-17, -15, 15, 17];
 const ROOK_OFFSETS = [-16, -1, 1, 16];
 const KING_OFFSETS = [-17, -16, -15, -1, 1, 15, 16, 17];
 const PIECE_OFFSETS = [
-  null, null, KNIGHT_OFFSETS, BISHOP_OFFSETS,
-  ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS
+  null, null, KNIGHT_OFFSETS, BISHOP_OFFSETS, ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS,
 ];
 
 /* The pseudo-legal moves of pos for the side to move, as a new array.
@@ -838,40 +813,38 @@ function generateMoves(pos) {
   const promoRank = us === WHITE ? 7 : 0;
   const pawnMove = (from, to, flag) => {
     if ((to >> 4) === promoRank) {
-      for (let pr = QUEEN; pr >= KNIGHT; pr--)
-        moves.push(encodeMove(from, to, pr, 0));
+      for (let pr = QUEEN; pr >= KNIGHT; pr--) moves.push(encodeMove(from, to, pr, 0));
     } else moves.push(encodeMove(from, to, 0, flag));
   };
 
-  for (let s = 0; s < 128; s++) {
-    if (s & 0x88) { s += 7; continue; }
-    const p = board[s];
-    if (p === EMPTY || (p >> 3) !== us) continue;
-    const type = p & 7;
+  for (let sq = 0; sq < 128; sq++) {
+    if (sq & 0x88) { sq += 7; continue; }
+    const piece = board[sq];
+    if (piece === EMPTY || (piece >> 3) !== us) continue;
+    const type = piece & 7;
 
     if (type === PAWN) {
-      const push = s + up;
+      const push = sq + up;
       if (board[push] === EMPTY) {
-        pawnMove(s, push, 0);
-        if ((s >> 4) === startRank && board[push + up] === EMPTY)
-          pawnMove(s, push + up, 0);
+        pawnMove(sq, push, 0);
+        if ((sq >> 4) === startRank && board[push + up] === EMPTY) pawnMove(sq, push + up, 0);
       }
       for (let to = push - 1; to <= push + 1; to += 2) { // the two captures
         if (to & 0x88) continue;
-        const c = board[to];
-        if (c !== EMPTY && (c >> 3) === them) pawnMove(s, to, 0);
-        else if (to === pos.epSq) pawnMove(s, to, FLAG_EP);
+        const occupant = board[to];
+        if (occupant !== EMPTY && (occupant >> 3) === them) pawnMove(sq, to, 0);
+        else if (to === pos.epSq) pawnMove(sq, to, FLAG_EP);
       }
       continue;
     }
 
     const slides = type >= BISHOP && type <= QUEEN;
     for (const offset of PIECE_OFFSETS[type]) {
-      for (let to = s + offset; !(to & 0x88); to += offset) {
-        const c = board[to];
-        if (c === EMPTY) moves.push(encodeMove(s, to, 0, 0));
+      for (let to = sq + offset; !(to & 0x88); to += offset) {
+        const occupant = board[to];
+        if (occupant === EMPTY) moves.push(encodeMove(sq, to, 0, 0));
         else {
-          if ((c >> 3) === them) moves.push(encodeMove(s, to, 0, 0));
+          if ((occupant >> 3) === them) moves.push(encodeMove(sq, to, 0, 0));
           break;
         }
         if (!slides) break;
@@ -882,19 +855,19 @@ function generateMoves(pos) {
   // Castling (standard and Chess960 alike): every square the king and
   // rook pass over or land on must be empty, apart from the two of
   // them, and the king may not start in, pass through or end in check.
-  for (let c = us * 2; c < us * 2 + 2; c++) {
-    if (!(pos.castling & (1 << c))) continue;
-    const kFrom = pos.kingSq[us], rFrom = pos.castle.rookSq[c];
-    const kTo = castleKingTo[c], rTo = castleRookTo[c];
+  for (let right = us * 2; right < us * 2 + 2; right++) {
+    if (!(pos.castling & (1 << right))) continue;
+    const kFrom = pos.kingSq[us], rFrom = pos.castle.rookSq[right];
+    const kTo = castleKingTo[right], rTo = castleRookTo[right];
     const lo = Math.min(kFrom, kTo, rFrom, rTo);
     const hi = Math.max(kFrom, kTo, rFrom, rTo);
     let ok = true;
-    for (let s = lo; s <= hi && ok; s++) {
-      if (s !== kFrom && s !== rFrom && board[s] !== EMPTY) ok = false;
+    for (let sq = lo; sq <= hi && ok; sq++) {
+      if (sq !== kFrom && sq !== rFrom && board[sq] !== EMPTY) ok = false;
     }
     const step = kTo > kFrom ? 1 : -1;
-    for (let s = kFrom; ok && s !== kTo + step; s += step) {
-      if (isAttacked(board, s, them)) ok = false;
+    for (let sq = kFrom; ok && sq !== kTo + step; sq += step) {
+      if (isAttacked(board, sq, them)) ok = false;
     }
     if (ok) moves.push(encodeMove(kFrom, rFrom, 0, FLAG_CASTLE));
   }
@@ -903,37 +876,36 @@ function generateMoves(pos) {
 
 /* ---- Attacks -----------------------------------------------------
 
-   Is square s of `board` attacked by colour `by`? We look outward
-   from s: is there a pawn/knight/king of that colour at the right
+   Is square `sq` of `board` attacked by colour `by`? We look outward
+   from it: is there a pawn/knight/king of that colour at the right
    offset, and along each of the eight rays, is the first piece we
    meet a slider that moves this way? Only the board matters, so
    makeMove() can ask before it has made a whole position.
 */
-function isAttacked(board, s, by) {
-  const c = by << 3;
-  const pawn = PAWN | c, knight = KNIGHT | c, king = KING | c;
+function isAttacked(board, sq, by) {
+  const colourBits = by << 3;
+  const pawn = PAWN | colourBits, knight = KNIGHT | colourBits, king = KING | colourBits;
   if (by === WHITE) {
-    if (!((s - 15) & 0x88) && board[s - 15] === pawn) return true;
-    if (!((s - 17) & 0x88) && board[s - 17] === pawn) return true;
+    if (!((sq - 15) & 0x88) && board[sq - 15] === pawn) return true;
+    if (!((sq - 17) & 0x88) && board[sq - 17] === pawn) return true;
   } else {
-    if (!((s + 15) & 0x88) && board[s + 15] === pawn) return true;
-    if (!((s + 17) & 0x88) && board[s + 17] === pawn) return true;
+    if (!((sq + 15) & 0x88) && board[sq + 15] === pawn) return true;
+    if (!((sq + 17) & 0x88) && board[sq + 17] === pawn) return true;
   }
   for (let i = 0; i < 8; i++) {
-    const t = s + KNIGHT_OFFSETS[i];
-    if (!(t & 0x88) && board[t] === knight) return true;
+    const to = sq + KNIGHT_OFFSETS[i];
+    if (!(to & 0x88) && board[to] === knight) return true;
   }
   for (let i = 0; i < 8; i++) {
     const off = KING_OFFSETS[i];
-    if (!((s + off) & 0x88) && board[s + off] === king) return true;
+    if (!((sq + off) & 0x88) && board[sq + off] === king) return true;
     const slider = (off === -16 || off === -1 || off === 1 || off === 16)
       ? ROOK
       : BISHOP;
-    for (let t = s + off; !(t & 0x88); t += off) {
-      const p = board[t];
-      if (p === EMPTY) continue;
-      if ((p >> 3) === by &&
-          ((p & 7) === QUEEN || (p & 7) === slider)) return true;
+    for (let to = sq + off; !(to & 0x88); to += off) {
+      const piece = board[to];
+      if (piece === EMPTY) continue;
+      if ((piece >> 3) === by && ((piece & 7) === QUEEN || (piece & 7) === slider)) return true;
       break;
     }
   }
@@ -1005,11 +977,7 @@ function keyHigh(key) { return Math.floor(key / 2 ** 32) | 0; }
 */
 
 function newSession() {
-  return {
-    pos: positionFromFen(START_FEN),
-    skill: skillFor(SKILL_MAX, 0),
-    chess960: false,
-  };
+  return { pos: positionFromFen(START_FEN), skill: skillFor(SKILL_MAX, 0), chess960: false };
 }
 
 function uciCommand(session, line, io) {
@@ -1029,10 +997,8 @@ function uciCommand(session, line, io) {
       // Castling notation: king-takes-rook.
       io.out("option name UCI_Chess960 type check default false");
 
-      io.out(
-        `option name Skill_Level type spin default ${SKILL_MAX} ` +
-        `min 1 max ${SKILL_MAX}`
-      ); // 1 = random mover, SKILL_MAX = full strength
+      // 1 = random mover, SKILL_MAX = full strength
+      io.out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
 
       // Which deterministic opponent; 0 = built-in.
       io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
@@ -1102,8 +1068,8 @@ function positionFromUci(spec, chess960) {
     : START_FEN;
   const moves = movesAt >= 0 ? tokens.slice(movesAt + 1) : [];
   return moves.reduce((pos, str) => {
-    const m = parseMove(pos, str, chess960);
-    return m ? makeMove(pos, m) : pos; // an unknown move is skipped
+    const move = parseMove(pos, str, chess960);
+    return move ? makeMove(pos, move) : pos; // an unknown move is skipped
   }, positionFromFen(fen));
 }
 
@@ -1125,7 +1091,7 @@ function infoLine(result, chess960) {
   const scoreText = Math.abs(score) >= MATE_IN_MAX
     ? "mate " + (score > 0 ? (MATE - score + 1) >> 1 : -((MATE + score) >> 1))
     : "cp " + score;
-  const line = pv.map((m) => " " + moveToUci(m, chess960)).join("");
+  const line = pv.map((move) => " " + moveToUci(move, chess960)).join("");
   return `info depth ${depth} multipv 1 score ${scoreText} nodes ${nodes} ` +
     `nps ${nps} time ${Math.round(elapsed)} pv${line}`;
 }
@@ -1135,8 +1101,8 @@ function infoLine(result, chess960) {
 function perft(pos, depth) {
   if (depth === 0) return 1;
   let count = 0;
-  for (const m of generateMoves(pos)) {
-    const next = makeMove(pos, m);
+  for (const move of generateMoves(pos)) {
+    const next = makeMove(pos, move);
     if (next !== null) count += perft(next, depth - 1);
   }
   return count;
@@ -1145,16 +1111,14 @@ function perft(pos, depth) {
 function perftDivide(pos, depth, chess960, io) {
   const t0 = io.now();
   let total = 0;
-  for (const m of legalMoves(pos)) {
-    const count = perft(makeMove(pos, m), depth - 1);
+  for (const move of legalMoves(pos)) {
+    const count = perft(makeMove(pos, move), depth - 1);
     total += count;
-    io.out(`${moveToUci(m, chess960)}: ${count}`);
+    io.out(`${moveToUci(move, chess960)}: ${count}`);
   }
   const ms = io.now() - t0;
-  io.out(
-    `perft ${depth} nodes ${total} time ${Math.round(ms)} ` +
-    `nps ${Math.round(total * 1000 / Math.max(1, ms))}`
-  );
+  io.out(`perft ${depth} nodes ${total} time ${Math.round(ms)} ` +
+    `nps ${Math.round(total * 1000 / Math.max(1, ms))}`);
 }
 
 /* ---- Bench: a fixed set of positions to a fixed depth, at full
@@ -1189,16 +1153,13 @@ function bench(depth, io) {
     totalNodes += nodes;
     io.out(`info string ${nodes} nodes  ${fen}`);
   }
-  io.out(
-    `${totalNodes} nodes ` +
-    `${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`
-  );
+  io.out(`${totalNodes} nodes ${Math.round(totalNodes * 1000 / Math.max(1, totalMs))} nps`);
 }
 
 function display(pos, skill, chess960, out) {
-  for (let r = 7; r >= 0; r--) {
-    let row = `${r + 1} `;
-    for (let f = 0; f < 8; f++) row += " " + PIECE_CHARS[pos.board[r * 16 + f]];
+  for (let rank = 7; rank >= 0; rank--) {
+    let row = `${rank + 1} `;
+    for (let file = 0; file < 8; file++) row += " " + PIECE_CHARS[pos.board[rank * 16 + file]];
     out(row);
   }
   out("   a b c d e f g h");
@@ -1225,8 +1186,7 @@ function display(pos, skill, chess960, out) {
    and replaces it with whatever uciCommand() returns. */
 const isBun = typeof Bun !== "undefined";
 const inWorker = isBun ? !Bun.isMainThread
-  : typeof WorkerGlobalScope !== "undefined" &&
-    self instanceof WorkerGlobalScope;
+  : typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
 
 if (isBun && Bun.isMainThread) {
   if (process.argv[2] === "bench") {
