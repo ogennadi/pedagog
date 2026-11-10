@@ -38,12 +38,12 @@ GPL-3.0-or-later chessground. Do not commit the generated HTML as source.
 
 Pedagog deliberately favors readable code over maximum strength. Each
 function takes what it needs as arguments and returns what it finds, so it can
-be read on its own; only `makeMove` and `unmakeMove` change a position in place.
+be read on its own. Positions are never changed: `makeMove` returns a new one.
 
 | Area | Implementation |
 |---|---|
 | Board representation | 0x88 mailbox, not bitboards; moves packed into 32-bit integers. |
-| Move generation | Pseudo-legal moves, with legality checked by make/unmake; standard chess and Chess960. |
+| Move generation | Pseudo-legal moves, with legality checked by making each move (copy/make); standard chess and Chess960. |
 | Search | Single-threaded negamax alpha-beta with iterative deepening and captures-first move ordering. |
 | Evaluation | Material and formula-based piece-square tables, tapered between middlegame and endgame; recomputed at each leaf. |
 | Position hashing | Zobrist hashing for repetition detection and deterministic skill-level variation, not a transposition table. |

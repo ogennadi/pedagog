@@ -28,15 +28,14 @@
    HOW TO READ IT
    Every function names what it needs in its parameters and hands
    back what it found as its return value, so each one can be read
-   on its own page. There are no module-level variables that change
-   while the engine runs; the only `let`s outside a function belong
-   to the I/O code at the very end.
+   on its own page. No function changes anything it is given, and
+   there are no module-level variables that change while the engine
+   runs; the only `let`s outside a function belong to the I/O code
+   at the very end.
 
-   One deliberate exception: a position (S4) is changed in place by
-   makeMove() and undone by unmakeMove(). The search visits millions
-   of positions, and copying a board for each would cost much of its
-   speed. Every other function that receives a position either only
-   reads it, or makes and unmakes moves and hands it back unchanged.
+   Positions (S4) are values too: makeMove() returns a new position
+   rather than changing the old one. That costs some speed, since
+   every move copies a board, but nothing ever has to be undone.
 ================================================================
 
    TABLE OF CONTENTS
@@ -45,7 +44,7 @@
    S1  Search              Iterative deepening, alpha-beta, ordering
    S2  Skill Levels        Depth ceiling, blunders, vision
    S3  Evaluation          A naive piece-square evaluation
-   S4  Chess Rules         Position, make/unmake, draws, moves, attacks
+   S4  Chess Rules         Position, copy/make, draws, moves, attacks
    S5  Zobrist Hashing     Position keys for repetition detection
    S6  UCI                 Sessions, options, bench, perft, I/O
 ================================================================
@@ -136,7 +135,7 @@ const now = () => performance.now();
                iterative deepening: depth 1, 2, 3, ... until a limit
                is reached. Returns the result of the last finished
                depth, so there is always a complete answer.
-   search(alpha, beta, depth, ply)
+   search(pos, alpha, beta, depth, ply)
                negamax alpha-beta. Alpha is the best score the side
                to move is already assured of, beta the best the
                opponent will allow. A move scoring >= beta is "too
@@ -146,8 +145,9 @@ const now = () => performance.now();
                play (principal variation) that produces it.
 
    search() is written inside think(): everything it uses besides
-   its four arguments (the position, the skill, the node count and
-   the stop flag) is declared a few lines above it, in think().
+   its arguments (the skill, the overlooked root moves, the node
+   count and the stop flag) is declared a few lines above it, in
+   think().
 
    Scores are always from the point of view of the side to move
    (negamax): +100 means "the side to move is a pawn up". A child's
@@ -161,8 +161,7 @@ const NO_LINE = Object.freeze([]);
    as `skill` (from skillFor()). `io` supplies the clock, `now()`; a
    stop request, `shouldStop()`; and `onInfo(result)`, called after
    every finished depth. Returns { bestMove, depth, score, nodes,
-   elapsed, pv }; bestMove is 0 when there is no legal move. The
-   position is searched in place and handed back unchanged. */
+   elapsed, pv }; bestMove is 0 when there is no legal move. */
 function think(pos, limits, skill, io) {
   const startTime = io.now();
   const rootMoves = legalMoves(pos);
@@ -189,7 +188,7 @@ function think(pos, limits, skill, io) {
 
   for (let depth = 1; depth <= maxDepth; depth++) {
     rootDepth = depth;
-    const { score, pv } = search(-INF, INF, depth, 0);
+    const { score, pv } = search(pos, -INF, INF, depth, 0);
     if (stopped) break; // an interrupted depth cannot replace `best`
     best = {
       bestMove: pv[0], depth, score, nodes,
@@ -209,9 +208,8 @@ function think(pos, limits, skill, io) {
   }
 
   /* Negamax to a fixed depth: terminate, try moves, keep the best line,
-     and stop at a beta cutoff. Every successful make has an unmake,
-     including overlooked moves and interrupted searches. */
-  function search(alpha, beta, depth, ply) {
+     and stop at a beta cutoff. */
+  function search(pos, alpha, beta, depth, ply) {
     nodes++;
     if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached())
       stopped = true;
@@ -225,15 +223,12 @@ function think(pos, limits, skill, io) {
     let legalMoveCount = 0, searchedMoveCount = 0;
     for (const move of orderMoves(pos, generateMoves(pos))) {
       if (ply === 0 && unseen.includes(move)) continue;
-      if (!makeMove(pos, move)) continue;       // leaves our king in check
+      const next = makeMove(pos, move);
+      if (next === null) continue;              // leaves our king in check
       legalMoveCount++;
-      if (ply > 0 && !seesMove(pos, skill, move, ply)) {
-        unmakeMove(pos);
-        continue;
-      }
+      if (ply > 0 && !seesMove(next, skill, move, ply)) continue;
       searchedMoveCount++;
-      const child = search(-beta, -raisedAlpha, depth - 1, ply + 1);
-      unmakeMove(pos);
+      const child = search(next, -beta, -raisedAlpha, depth - 1, ply + 1);
       if (stopped) return { score: 0, pv: NO_LINE };
 
       const score = -child.score;
@@ -247,10 +242,8 @@ function think(pos, limits, skill, io) {
       }
     }
 
-    if (legalMoveCount === 0) {
-      const inCheck = isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
-      return { score: inCheck ? -MATE + ply : DRAW, pv: NO_LINE };
-    }
+    if (legalMoveCount === 0)
+      return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
     if (searchedMoveCount === 0) // overlooked every legal move
       return { score: judge(pos, skill), pv: NO_LINE };
     return { score: bestScore, pv };
@@ -396,7 +389,7 @@ function skillFor(level, seed) {
    rung's share of positions, decided by the hash. */
 function skillDepth(pos, skill) {
   if (skill.deeperPermille === 0) return skill.depth;
-  const h = mix32(pos.keyLo ^ skill.seedKey ^ 0xA5A55A5A);
+  const h = mix32(keyLow(pos.key) ^ skill.seedKey ^ 0xA5A55A5A);
   return skill.depth + (h % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
@@ -412,22 +405,21 @@ function judge(pos, skill) {
    not from evaluate(). */
 function blunder(pos, skill) {
   if (skill.blunderWindow === 0) return 0;
-  const h = mix32(pos.keyLo ^ Math.imul(pos.keyHi, 0x9E3779B9) ^ skill.seedKey);
+  const h = mix32(keyLow(pos.key) ^ Math.imul(keyHigh(pos.key), 0x9E3779B9) ^ skill.seedKey);
   if (h % 1000 >= skill.blunderPermille) return 0;
   return (mix32(h) % (2 * skill.blunderWindow + 1)) - skill.blunderWindow;
 }
 
 /* Does the player notice move m, made `ply` plies below the root?
-   Called after makeMove(pos, m), so the key is the child's and
-   "gives check" is known. */
-function seesMove(pos, skill, m, ply) {
+   `after` is the position the move leads to, so its key and whether
+   the move gives check are known. */
+function seesMove(after, skill, m, ply) {
   if (skill.vision >= FULL_VISION) return true;
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
-  const h = mix32(pos.keyLo ^ Math.imul(m, 0x9E3779B9) ^ skill.seedKey);
+  const h = mix32(keyLow(after.key) ^ Math.imul(m, 0x9E3779B9) ^ skill.seedKey);
   if (((h >>> 20) & 1023) < chance) return true;
-  const easy = pos.histCaptured[pos.hply - 1] !== EMPTY ||
-    moveFlag(m) === FLAG_EP ||
-    isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
+  const easy = after.captured !== EMPTY || moveFlag(m) === FLAG_EP ||
+    inCheck(after);
   return easy && ((h >>> 8) & 1023) < chance;
 }
 
@@ -435,12 +427,7 @@ function seesMove(pos, skill, m, ply) {
    it sees them all: a move has to be played. */
 function overlookedRootMoves(pos, skill, rootMoves) {
   if (skill.vision >= FULL_VISION) return [];
-  const unseen = rootMoves.filter((m) => {
-    makeMove(pos, m);
-    const seen = seesMove(pos, skill, m, 0);
-    unmakeMove(pos);
-    return !seen;
-  });
+  const unseen = rootMoves.filter((m) => !seesMove(makeMove(pos, m), skill, m, 0));
   return unseen.length === rootMoves.length ? [] : unseen;
 }
 
@@ -448,15 +435,12 @@ function overlookedRootMoves(pos, skill, rootMoves) {
    spot. */
 function randomMove(pos, skill, moves) {
   return moves.find((m) => givesMate(pos, m)) ??
-    moves[mix32(pos.keyLo ^ skill.seedKey) % moves.length];
+    moves[mix32(keyLow(pos.key) ^ skill.seedKey) % moves.length];
 }
 
 function givesMate(pos, m) {
-  makeMove(pos, m);
-  const mate = legalMoves(pos).length === 0 &&
-    isAttacked(pos, pos.kingSq[pos.side], pos.side ^ 1);
-  unmakeMove(pos);
-  return mate;
+  const after = makeMove(pos, m);
+  return legalMoves(after).length === 0 && inCheck(after);
 }
 
 /* A 32-bit integer hash finaliser (two multiply-xorshift rounds). */
@@ -479,9 +463,9 @@ function mix32(x) {
    and comes out in the endgame.
 
    evaluate(pos) simply walks the board and adds up material and
-   placement. (Real engines keep these sums up to date in make/unmake
-   instead, which is faster but spreads the evaluation over three
-   functions.) The skill level's occasional blunder is added
+   placement. (Real engines keep these sums up to date as each move
+   is made, which is faster but spreads the evaluation over more
+   than one function.) The skill level's occasional blunder is added
    separately, by judge() in S2.
 */
 
@@ -567,190 +551,113 @@ function evaluate(pos) {
    alongside the position they describe. Evaluation and search
    policy live outside it.
 
-   A position is a plain object (see emptyPosition()), made by
-   positionFromFen() and passed to every function here as `pos`.
-   The search makes and unmakes moves on one position rather than
-   copying it (make/unmake rather than copy/make). Everything a move
-   destroys is saved on the position's history stack so it can be put
-   back exactly.
+   A position is a value: once made, it never changes. makeMove()
+   does not alter the position it is given; it returns a new one
+   (copy/make rather than make/unmake), or null if the move would
+   leave the mover's king in check. Each position links to the one
+   before it (`prev`), which is all that repetition detection needs.
 
    Position contract (what search needs to know):
    - generateMoves(pos) returns a new array of packed pseudo-legal
-     moves; legalMoves(pos) filters them and hands pos back unchanged.
+     moves; legalMoves(pos) keeps the ones makeMove() accepts.
    - makeMove(pos, move) accepts one of those moves, not arbitrary
-     packed input. On true, the move is applied, side is the opponent,
-     and one history entry is pushed. On false, our king would be in
-     check and the position and history depth are already restored.
-   - Every successful makeMove() in search must have exactly one
-     unmakeMove(pos), even when a move is overlooked or search stops.
-     Unmake restores the board, piece counts, king squares, side,
-     castling rights, en passant square, fifty-move counter, hash
-     and history depth. It requires a previous successful make.
-   - makeMove() and unmakeMove() are the only functions that change
-     a position after it has been made.
-
-   addPiece() and removePiece() are internal bookkeeping helpers:
-   they keep the board, piece counts and piece component of the hash
-   together. They do not apply chess moves or manage turn/history.
-   These details are needed to understand make/unmake, not negamax.
+     packed input. It returns the position after the move, with the
+     opponent to move, or null if our king would be left in check.
 
    Castling rights are four bits: 1 = white kingside, 2 = white
    queenside, 4 = black kingside, 8 = black queenside. For each
-   right the position remembers the rook's square (Chess960 rooks
-   can start on any file), and castleMask[sq] holds the rights that
-   survive a piece moving from or to that square.
+   right we remember the rook's square (Chess960 rooks can start on
+   any file), and mask[sq] holds the rights that survive a piece
+   moving from or to that square. Both are fixed for a whole game,
+   so all of its positions share one `castle` object.
+
+   The fields of a position:
+     board        Int8Array(128): EMPTY or a packed piece per square
+     kingSq       [white king's square, black king's square]
+     pieceCount   Int8Array(16): how many of each packed piece
+     side         the colour to move
+     castling     the castling rights still held, four bits
+     castle       { rookSq, mask } for this game (see above)
+     epSq         en passant target square, or -1
+     fifty        plies since the last capture or pawn move
+     key          Zobrist key, a 46-bit sum (S5)
+     plies        moves played since the FEN was loaded
+     captured     the piece the last move took from its destination
+                  square (EMPTY if none, and for en passant)
+     prev         the position before the last move, or null
 */
 
 const castleKingTo = [6, 2, 118, 114];  // g1 c1 g8 c8
 const castleRookTo = [5, 3, 117, 115];  // f1 d1 f8 d8
 
-const HISTORY_SIZE = 2048;             // game moves plus search plies
-
-/* A position with an empty board and no history. Only for
-   positionFromFen(), which fills it in. */
-function emptyPosition() {
-  return {
-    board: new Int8Array(128),       // EMPTY or a packed piece per square
-    kingSq: new Int32Array(2),       // by colour
-    pieceCount: new Int32Array(16),  // by packed piece
-    side: WHITE,                     // to move
-    castling: 0,                     // rights, four bits
-    castleRookSq: new Int32Array(4).fill(-1),
-    castleMask: new Int8Array(128).fill(15),
-    epSq: -1,                        // en passant target square, or -1
-    fifty: 0,                        // plies since a capture or pawn move
-    keyLo: 0, keyHi: 0,              // 64-bit Zobrist key as two halves
-    // History: what each move destroyed, indexed by ply 0..hply-1.
-    hply: 0,
-    histMove: new Int32Array(HISTORY_SIZE),
-    histCaptured: new Int8Array(HISTORY_SIZE),
-    histCastle: new Int8Array(HISTORY_SIZE),
-    histEp: new Int16Array(HISTORY_SIZE),
-    histFifty: new Int16Array(HISTORY_SIZE),
-    histKeyLo: new Int32Array(HISTORY_SIZE),
-    histKeyHi: new Int32Array(HISTORY_SIZE),
-  };
-}
-
-/* Place nonempty packed piece p on empty on-board square s.
-   Also update its count, piece hash and (for a king) kingSq. */
-function addPiece(pos, s, p) {
-  pos.board[s] = p;
-  pos.pieceCount[p]++;
-  pos.keyLo ^= zobPieceLo[p * 128 + s];
-  pos.keyHi ^= zobPieceHi[p * 128 + s];
-  if ((p & 7) === KING) pos.kingSq[p >> 3] = s;
-}
-
-/* Remove the piece from occupied on-board square s, updating its
-   count and piece hash. A removed king's kingSq stays stale until
-   addPiece() places it again; callers must finish that transition
-   before asking about king safety. */
-function removePiece(pos, s) {
-  const p = pos.board[s];
-  pos.board[s] = EMPTY;
-  pos.pieceCount[p]--;
-  pos.keyLo ^= zobPieceLo[p * 128 + s];
-  pos.keyHi ^= zobPieceHi[p * 128 + s];
-}
-
-/* Apply a generated pseudo-legal move to pos. True requires a later
-   unmake; false means king safety failed and pos is already restored.
-   Movement rules are the generator's responsibility, not validated
-   here. */
+/* The position after `move`, or null if the move leaves our king in
+   check. `pos` itself is not changed. Movement rules are the
+   generator's responsibility, not validated here. */
 function makeMove(pos, move) {
   const from = moveFrom(move), to = moveTo(move);
   const promotion = movePromo(move), flag = moveFlag(move);
-  const us = pos.side, them = us ^ 1, piece = pos.board[from];
+  const us = pos.side, them = us ^ 1;
 
-  const h = pos.hply;
-  pos.histMove[h] = move;
-  pos.histCaptured[h] = flag === FLAG_CASTLE ? EMPTY : pos.board[to];
-  pos.histCastle[h] = pos.castling;
-  pos.histEp[h] = pos.epSq;
-  pos.histFifty[h] = pos.fifty;
-  pos.histKeyLo[h] = pos.keyLo;
-  pos.histKeyHi[h] = pos.keyHi;
-  pos.hply = h + 1;
+  // The new position starts as a copy of the old; only the copy is
+  // changed below.
+  const board = pos.board.slice(), pieceCount = pos.pieceCount.slice();
+  const kingSq = [pos.kingSq[0], pos.kingSq[1]];
+  let key = pos.key + (us === WHITE ? zobSide : -zobSide);
+  let epSq = -1, fifty = pos.fifty + 1, captured = EMPTY;
 
-  if (pos.epSq >= 0) {
-    pos.keyLo ^= zobEpLo[pos.epSq & 7];
-    pos.keyHi ^= zobEpHi[pos.epSq & 7];
-    pos.epSq = -1;
-  }
-  pos.fifty++;
+  // Take the piece off square s, or put piece p on square s, keeping
+  // the piece counts, king squares and key in step with the board.
+  const lift = (s) => {
+    const p = board[s];
+    board[s] = EMPTY;
+    pieceCount[p]--;
+    key -= zobPiece[p * 128 + s];
+    return p;
+  };
+  const put = (s, p) => {
+    board[s] = p;
+    pieceCount[p]++;
+    key += zobPiece[p * 128 + s];
+    if ((p & 7) === KING) kingSq[p >> 3] = s;
+  };
+
+  if (pos.epSq >= 0) key -= zobEp[pos.epSq & 7];
 
   if (flag === FLAG_CASTLE) {
-    const castle = us * 2 + (to > from ? 0 : 1), rook = pos.board[to];
-    removePiece(pos, from);
-    removePiece(pos, to);
-    addPiece(pos, castleKingTo[castle], piece);
-    addPiece(pos, castleRookTo[castle], rook);
+    const castle = us * 2 + (to > from ? 0 : 1);
+    const king = lift(from), rook = lift(to);
+    put(castleKingTo[castle], king);
+    put(castleRookTo[castle], rook);
   } else {
-    if (pos.board[to] !== EMPTY) {
-      removePiece(pos, to);
-      pos.fifty = 0;
+    if (board[to] !== EMPTY) {
+      captured = lift(to);
+      fifty = 0;
     }
-    removePiece(pos, from);
-    addPiece(pos, to, promotion ? promotion | (us << 3) : piece);
+    const piece = lift(from);
+    put(to, promotion ? promotion | (us << 3) : piece);
     if ((piece & 7) === PAWN) {
-      pos.fifty = 0;
-      if (flag === FLAG_EP) removePiece(pos, to + (us === WHITE ? -16 : 16));
+      fifty = 0;
+      if (flag === FLAG_EP) lift(to + (us === WHITE ? -16 : 16));
       else if (to - from === 32 || from - to === 32) {
-        pos.epSq = (from + to) >> 1;
-        pos.keyLo ^= zobEpLo[pos.epSq & 7];
-        pos.keyHi ^= zobEpHi[pos.epSq & 7];
+        epSq = (from + to) >> 1;
+        key += zobEp[epSq & 7];
       }
     }
   }
 
-  pos.keyLo ^= zobCastleLo[pos.castling];
-  pos.keyHi ^= zobCastleHi[pos.castling];
-  pos.castling &= pos.castleMask[from] & pos.castleMask[to];
-  pos.keyLo ^= zobCastleLo[pos.castling];
-  pos.keyHi ^= zobCastleHi[pos.castling];
-  pos.side = them;
-  pos.keyLo ^= zobSideLo;
-  pos.keyHi ^= zobSideHi;
+  if (isAttacked(board, kingSq[us], them)) return null;
 
-  if (isAttacked(pos, pos.kingSq[us], them)) {
-    unmakeMove(pos);
-    return false;
-  }
-  return true;
+  const castling = pos.castling & pos.castle.mask[from] & pos.castle.mask[to];
+  key += zobCastle[castling] - zobCastle[pos.castling];
+  return {
+    board, kingSq, pieceCount, side: them, castling, castle: pos.castle,
+    epSq, fifty, key, plies: pos.plies + 1, captured, prev: pos,
+  };
 }
 
-/* Undo the last successful makeMove(pos, ...), restoring the previous
-   position. Requires hply > 0; abandoned history slots beyond hply are
-   not cleared. */
-function unmakeMove(pos) {
-  const h = pos.hply - 1;
-  pos.hply = h;
-  pos.side ^= 1;
-  const move = pos.histMove[h], from = moveFrom(move), to = moveTo(move);
-  const promotion = movePromo(move), flag = moveFlag(move);
-  const us = pos.side;
-  if (flag === FLAG_CASTLE) {
-    const castle = us * 2 + (to > from ? 0 : 1);
-    const king = pos.board[castleKingTo[castle]];
-    const rook = pos.board[castleRookTo[castle]];
-    removePiece(pos, castleKingTo[castle]);
-    removePiece(pos, castleRookTo[castle]);
-    addPiece(pos, from, king);
-    addPiece(pos, to, rook);
-  } else {
-    const piece = pos.board[to];
-    removePiece(pos, to);
-    addPiece(pos, from, promotion ? PAWN | (us << 3) : piece);
-    if (flag === FLAG_EP)
-      addPiece(pos, to + (us === WHITE ? -16 : 16), PAWN | ((us ^ 1) << 3));
-    else if (pos.histCaptured[h] !== EMPTY) addPiece(pos, to, pos.histCaptured[h]);
-  }
-  pos.castling = pos.histCastle[h];
-  pos.epSq = pos.histEp[h];
-  pos.fifty = pos.histFifty[h];
-  pos.keyLo = pos.histKeyLo[h];
-  pos.keyHi = pos.histKeyHi[h];
+/* Is the side to move in check? */
+function inCheck(pos) {
+  return isAttacked(pos.board, pos.kingSq[pos.side], pos.side ^ 1);
 }
 
 /* Draw by the fifty-move rule, by repetition (once is enough inside
@@ -758,9 +665,11 @@ function unmakeMove(pos) {
    minor piece). */
 function isDraw(pos) {
   if (pos.fifty >= 100) return true;
-  for (let i = pos.hply - 2; i >= 0 && i >= pos.hply - pos.fifty; i -= 2)
-    if (pos.histKeyLo[i] === pos.keyLo && pos.histKeyHi[i] === pos.keyHi)
-      return true;
+  // Earlier positions with the same side to move: 2, 4, 6... plies
+  // back, but not past the last capture or pawn move.
+  for (let back = 2, p = pos.prev?.prev; p && back <= pos.fifty;
+    back += 2, p = p.prev?.prev)
+    if (p.key === pos.key) return true;
   const n = pos.pieceCount;
   return n[PAWN] + n[PAWN | 8] + n[ROOK] + n[ROOK | 8] +
       n[QUEEN] + n[QUEEN | 8] === 0 &&
@@ -773,10 +682,12 @@ function isDraw(pos) {
    rook on that side of the king, which covers Chess960 too. */
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-/* A new position from a FEN string, with no history. */
+/* A new position from a FEN string, with no earlier positions. */
 function positionFromFen(fen) {
-  const pos = emptyPosition();
   const parts = fen.trim().split(/\s+/);
+  const board = new Int8Array(128), pieceCount = new Int8Array(16);
+  const kingSq = [0, 0];
+  let key = 0;
   let rank = 7, file = 0;
   for (const ch of parts[0]) {
     if (ch === "/") {
@@ -785,28 +696,31 @@ function positionFromFen(fen) {
     } else if (ch >= "1" && ch <= "8") {
       file += ch.charCodeAt(0) - 48;
     } else {
-      addPiece(pos, rank * 16 + file, PIECE_CHARS.indexOf(ch));
+      const s = rank * 16 + file, p = PIECE_CHARS.indexOf(ch);
+      board[s] = p;
+      pieceCount[p]++;
+      key += zobPiece[p * 128 + s];
+      if ((p & 7) === KING) kingSq[p >> 3] = s;
       file++;
     }
   }
-  pos.side = parts[1] === "b" ? BLACK : WHITE;
-  if (pos.side === BLACK) { pos.keyLo ^= zobSideLo; pos.keyHi ^= zobSideHi; }
+  const side = parts[1] === "b" ? BLACK : WHITE;
+  if (side === BLACK) key += zobSide;
 
-  Object.assign(pos, castlingFromFen(pos.board, pos.kingSq, parts[2] || "-"));
-  pos.keyLo ^= zobCastleLo[pos.castling];
-  pos.keyHi ^= zobCastleHi[pos.castling];
+  const { castling, castle } = castlingFromFen(board, kingSq, parts[2] || "-");
+  key += zobCastle[castling];
 
-  if (parts[3] && parts[3] !== "-") {
-    pos.epSq = parseSquare(parts[3]);
-    pos.keyLo ^= zobEpLo[pos.epSq & 7];
-    pos.keyHi ^= zobEpHi[pos.epSq & 7];
-  }
-  pos.fifty = parseInt(parts[4]) || 0;
-  return pos;
+  const epSq = parts[3] && parts[3] !== "-" ? parseSquare(parts[3]) : -1;
+  if (epSq >= 0) key += zobEp[epSq & 7];
+  return {
+    board, kingSq, pieceCount, side, castling, castle,
+    epSq, fifty: parseInt(parts[4]) || 0, key,
+    plies: 0, captured: EMPTY, prev: null,
+  };
 }
 
 /* Interpret the FEN castling field for a loaded board and king
-   squares. Returns { castling, castleRookSq, castleMask }. */
+   squares. Returns { castling, castle: { rookSq, mask } }. */
 function castlingFromFen(board, kingSq, field) {
   // The first file, walking from `edge` towards `kingFile`, that holds
   // `rook` on the rank starting at `rankBase`; -1 if there is none.
@@ -818,8 +732,8 @@ function castlingFromFen(board, kingSq, field) {
   };
 
   let castling = 0;
-  const castleRookSq = new Int32Array(4).fill(-1);
-  const castleMask = new Int8Array(128).fill(15);
+  const rookSq = new Int32Array(4).fill(-1);
+  const mask = new Int8Array(128).fill(15);
   for (const ch of field) {
     if (ch === "-") continue;
     const colour = ch === ch.toUpperCase() ? WHITE : BLACK;
@@ -833,11 +747,11 @@ function castlingFromFen(board, kingSq, field) {
     if (rookFile < 0 || board[rankBase + rookFile] !== rook) continue;
     const c = colour * 2 + (rookFile > kingFile ? 0 : 1);
     castling |= 1 << c;
-    castleRookSq[c] = rankBase + rookFile;
-    castleMask[rankBase + rookFile] &= ~(1 << c);
-    castleMask[kingSq[colour]] &= ~(3 << (colour * 2));
+    rookSq[c] = rankBase + rookFile;
+    mask[rankBase + rookFile] &= ~(1 << c);
+    mask[kingSq[colour]] &= ~(3 << (colour * 2));
   }
-  return { castling, castleRookSq, castleMask };
+  return { castling, castle: { rookSq, mask } };
 }
 
 /* The FEN string for pos. Castling rights are written as file letters
@@ -857,7 +771,7 @@ function toFen(pos, chess960) {
   let rights = "";
   for (let c = 0; c < 4; c++) {
     if (!(pos.castling & (1 << c))) continue;
-    const file = pos.castleRookSq[c] & 7;
+    const file = pos.castle.rookSq[c] & 7;
     const standard = (c & 1) === 0 ? file === 7 : file === 0;
     const ch = chess960 && !standard
       ? "abcdefgh"[file]
@@ -866,7 +780,7 @@ function toFen(pos, chess960) {
   }
   return `${fen} ${pos.side === WHITE ? "w" : "b"} ${rights || "-"} ` +
     `${pos.epSq >= 0 ? squareName(pos.epSq) : "-"} ${pos.fifty} ` +
-    `${1 + (pos.hply >> 1)}`;
+    `${1 + (pos.plies >> 1)}`;
 }
 
 /* ---- Move notation -------------------------------------------------
@@ -894,11 +808,7 @@ function parseMove(pos, str, chess960) {
 
 /* The legal moves of pos, as a new array. */
 function legalMoves(pos) {
-  return generateMoves(pos).filter((move) => {
-    if (!makeMove(pos, move)) return false;
-    unmakeMove(pos);
-    return true;
-  });
+  return generateMoves(pos).filter((move) => makeMove(pos, move) !== null);
 }
 
 /* ---- Move generation ---------------------------------------------
@@ -974,7 +884,7 @@ function generateMoves(pos) {
   // them, and the king may not start in, pass through or end in check.
   for (let c = us * 2; c < us * 2 + 2; c++) {
     if (!(pos.castling & (1 << c))) continue;
-    const kFrom = pos.kingSq[us], rFrom = pos.castleRookSq[c];
+    const kFrom = pos.kingSq[us], rFrom = pos.castle.rookSq[c];
     const kTo = castleKingTo[c], rTo = castleRookTo[c];
     const lo = Math.min(kFrom, kTo, rFrom, rTo);
     const hi = Math.max(kFrom, kTo, rFrom, rTo);
@@ -984,7 +894,7 @@ function generateMoves(pos) {
     }
     const step = kTo > kFrom ? 1 : -1;
     for (let s = kFrom; ok && s !== kTo + step; s += step) {
-      if (isAttacked(pos, s, them)) ok = false;
+      if (isAttacked(board, s, them)) ok = false;
     }
     if (ok) moves.push(encodeMove(kFrom, rFrom, 0, FLAG_CASTLE));
   }
@@ -993,13 +903,13 @@ function generateMoves(pos) {
 
 /* ---- Attacks -----------------------------------------------------
 
-   Is square s of pos attacked by colour `by`? We look outward from
-   s: is there a pawn/knight/king of that colour at the right offset,
-   and along each of the eight rays, is the first piece we meet a
-   slider that moves this way?
+   Is square s of `board` attacked by colour `by`? We look outward
+   from s: is there a pawn/knight/king of that colour at the right
+   offset, and along each of the eight rays, is the first piece we
+   meet a slider that moves this way? Only the board matters, so
+   makeMove() can ask before it has made a whole position.
 */
-function isAttacked(pos, s, by) {
-  const board = pos.board;
+function isAttacked(board, s, by) {
   const c = by << 3;
   const pawn = PAWN | c, knight = KNIGHT | c, king = KING | c;
   if (by === WHITE) {
@@ -1035,13 +945,18 @@ function isAttacked(pos, s, by) {
    ================================================================
 
    Each (piece, square), each castling-rights set, each en passant
-   file and the side to move gets a random 64-bit number (two 32-bit
-   halves here, because JavaScript's fast integers are 32-bit). The
-   position's key is the XOR of the numbers for everything in it, so
-   it can be updated incrementally as pieces come and go, and two
-   equal positions always have equal keys. The key is used to detect
+   file and the side to move gets a random 46-bit number. The
+   position's key is the sum of the numbers for everything in it, so
+   it can be updated incrementally: add a piece's number when it
+   arrives on a square, subtract it when it leaves. Two equal
+   positions always have equal keys. The key is used to detect
    repetitions and to seed the Skill_Seed noise; a transposition
    table would be its third customer.
+
+   (Most engines combine 64-bit numbers with XOR instead. JavaScript's
+   ordinary numbers are exact only up to 2^53, but a position adds up
+   at most 35 of these 46-bit numbers, so the sum is always exact and
+   one plain number holds the whole key.)
 
    The numbers come from a fixed-seed xorshift generator, so every
    machine gets the same keys (and so the same skill-level choices).
@@ -1054,30 +969,24 @@ function zobristKeys(seed) {
     state = x;
     return x | 0;
   };
-  const zobPieceLo = new Int32Array(16 * 128);
-  const zobPieceHi = new Int32Array(16 * 128);
-  for (let i = 0; i < 16 * 128; i++) {
-    zobPieceLo[i] = rand32();
-    zobPieceHi[i] = rand32();
-  }
-  const zobCastleLo = new Int32Array(16), zobCastleHi = new Int32Array(16);
-  for (let i = 0; i < 16; i++) {
-    zobCastleLo[i] = rand32();
-    zobCastleHi[i] = rand32();
-  }
-  const zobEpLo = new Int32Array(8), zobEpHi = new Int32Array(8);
-  for (let i = 0; i < 8; i++) { zobEpLo[i] = rand32(); zobEpHi[i] = rand32(); }
-  const zobSideLo = rand32(), zobSideHi = rand32();
-  return {
-    zobPieceLo, zobPieceHi, zobCastleLo, zobCastleHi,
-    zobEpLo, zobEpHi, zobSideLo, zobSideHi,
+  // 46 random bits: 32 low bits, then 14 high bits from the next draw.
+  const rand46 = () => {
+    const lo = rand32(), hi = rand32();
+    return (hi >>> 18) * 2 ** 32 + (lo >>> 0);
   };
+  const zobPiece = new Float64Array(16 * 128).map(rand46);
+  const zobCastle = new Float64Array(16).map(rand46);
+  const zobEp = new Float64Array(8).map(rand46);
+  const zobSide = rand46();
+  return { zobPiece, zobCastle, zobEp, zobSide };
 }
 
-const {
-  zobPieceLo, zobPieceHi, zobCastleLo, zobCastleHi,
-  zobEpLo, zobEpHi, zobSideLo, zobSideHi,
-} = zobristKeys(0x2545F491);
+const { zobPiece, zobCastle, zobEp, zobSide } = zobristKeys(0x2545F491);
+
+/* A key's low 32 bits and the bits above them, as 32-bit integers,
+   for the skill levels' hashing (S2). */
+function keyLow(key) { return (key % 2 ** 32) | 0; }
+function keyHigh(key) { return Math.floor(key / 2 ** 32) | 0; }
 
 /* ================================================================
    S6  UCI
@@ -1191,12 +1100,11 @@ function positionFromUci(spec, chess960) {
   const fen = tokens[0] === "fen"
     ? tokens.slice(1, movesAt >= 0 ? movesAt : undefined).join(" ")
     : START_FEN;
-  const pos = positionFromFen(fen);
-  for (const str of movesAt >= 0 ? tokens.slice(movesAt + 1) : []) {
+  const moves = movesAt >= 0 ? tokens.slice(movesAt + 1) : [];
+  return moves.reduce((pos, str) => {
     const m = parseMove(pos, str, chess960);
-    if (m) makeMove(pos, m);
-  }
-  return pos;
+    return m ? makeMove(pos, m) : pos; // an unknown move is skipped
+  }, positionFromFen(fen));
 }
 
 /* The numbers of a "go" command, e.g. { wtime: 60000, winc: 1000 }. */
@@ -1223,14 +1131,13 @@ function infoLine(result, chess960) {
 }
 
 /* ---- Perft: count leaf nodes to a depth; the standard way to test a
-   move generator. pos is handed back unchanged. */
+   move generator. */
 function perft(pos, depth) {
   if (depth === 0) return 1;
   let count = 0;
   for (const m of generateMoves(pos)) {
-    if (!makeMove(pos, m)) continue;
-    count += perft(pos, depth - 1);
-    unmakeMove(pos);
+    const next = makeMove(pos, m);
+    if (next !== null) count += perft(next, depth - 1);
   }
   return count;
 }
@@ -1239,9 +1146,7 @@ function perftDivide(pos, depth, chess960, io) {
   const t0 = io.now();
   let total = 0;
   for (const m of legalMoves(pos)) {
-    makeMove(pos, m);
-    const count = perft(pos, depth - 1);
-    unmakeMove(pos);
+    const count = perft(makeMove(pos, m), depth - 1);
     total += count;
     io.out(`${moveToUci(m, chess960)}: ${count}`);
   }
@@ -1298,9 +1203,7 @@ function display(pos, skill, chess960, out) {
   }
   out("   a b c d e f g h");
   out(`fen ${toFen(pos, chess960)}`);
-  const key = ((pos.keyHi >>> 0).toString(16)).padStart(8, "0") +
-    ((pos.keyLo >>> 0).toString(16)).padStart(8, "0");
-  out(`key ${key}`);
+  out(`key ${pos.key.toString(16).padStart(13, "0")}`);
   out(`eval ${judge(pos, skill)} (side to move)`);
 }
 

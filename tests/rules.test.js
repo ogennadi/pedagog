@@ -6,7 +6,8 @@ import { engine } from "./engine.js";
 const load = (e, spec, chess960 = false) =>
   e.run(`globalThis.pos = positionFromUci(${JSON.stringify(spec)}, ${chess960})`);
 
-const snapshot = (e) => e.read("JSON.stringify({ board: [...pos.board], kings: [...pos.kingSq], counts: [...pos.pieceCount], side: pos.side, castling: pos.castling, epSq: pos.epSq, fifty: pos.fifty, keyLo: pos.keyLo, keyHi: pos.keyHi, hply: pos.hply })");
+// A position's fields as a string, for comparing two positions.
+const snapshot = (e, expr = "pos") => e.read(`((p) => JSON.stringify({ board: [...p.board], kings: [...p.kingSq], counts: [...p.pieceCount], side: p.side, castling: p.castling, epSq: p.epSq, fifty: p.fifty, key: String(p.key) }))(${expr})`);
 
 const quietIo = "{ now: () => 0, shouldStop: () => false, onInfo: () => {} }";
 
@@ -43,20 +44,22 @@ for (const [name, fen, move] of [
   ["Chess960 swapped destinations", "7k/8/8/8/8/8/8/5KR1 w G - 0 1", "f1g1"],
   ["Chess960 stationary king", "7k/8/8/8/8/8/8/6KR w H - 0 1", "g1h1"],
 ]) {
-  test(`make/unmake restores every position field: ${name}`, () => {
+  test(`makeMove returns a consistent new position and leaves the old one unchanged: ${name}`, () => {
     const e = engine();
     load(e, "fen " + fen, true);
     const before = snapshot(e);
-    e.run(`globalThis.move = parseMove(pos, '${move}', true)`);
+    e.run(`globalThis.move = parseMove(pos, '${move}', true); globalThis.after = makeMove(pos, move)`);
     expect(e.read("move")).not.toBe(0);
-    expect(e.read("makeMove(pos, move)")).toBe(true);
-    expect(snapshot(e)).not.toBe(before);
-    e.run("unmakeMove(pos)");
+    expect(e.read("after !== null && after.prev === pos")).toBe(true);
     expect(snapshot(e)).toBe(before);
+    expect(snapshot(e, "after")).not.toBe(before);
+    // The incremental updates agree with loading the new FEN from scratch.
+    expect(snapshot(e, "after")).toBe(snapshot(e, "positionFromFen(toFen(after, true))"));
+    expect(e.read("Number.isSafeInteger(after.key)")).toBe(true); // the sum stays exact
   });
 }
 
-test("illegal pinned move and en passant discovered check restore state", () => {
+test("illegal pinned move and en passant discovered check are rejected", () => {
   const e = engine();
   for (const [fen, from, to, flag] of [
     ["4r2k/8/8/8/8/8/4R3/4K3 w - - 0 1", "e2", "d2", 0],
@@ -64,7 +67,7 @@ test("illegal pinned move and en passant discovered check restore state", () => 
   ]) {
     load(e, "fen " + fen);
     const before = snapshot(e);
-    expect(e.read(`makeMove(pos, encodeMove(parseSquare('${from}'), parseSquare('${to}'), 0, ${flag}))`)).toBe(false);
+    expect(e.read(`makeMove(pos, encodeMove(parseSquare('${from}'), parseSquare('${to}'), 0, ${flag}))`)).toBe(null);
     expect(snapshot(e)).toBe(before);
     expect(e.read(`parseMove(pos, '${from}${to}', false)`)).toBe(0);
   }
@@ -125,7 +128,6 @@ test("search repetition policy recognizes one earlier occurrence, not official t
 
 test("attacks distinguish piece directions, slider blockers, colors and board edges", () => {
   const e = engine();
-  load(e, "fen 7k/8/8/8/8/8/8/K7 w - - 0 1");
   for (const [piece, square, target, color, expected] of [
     ["PAWN", "d3", "e4", "WHITE", true],
     ["PAWN", "f3", "e4", "WHITE", true],
@@ -143,11 +145,11 @@ test("attacks distinguish piece directions, slider blockers, colors and board ed
     ["ROOK | 8", "e2", "e4", "WHITE", false],
     ["PAWN", "h2", "a4", "WHITE", false],
   ]) {
-    e.run(`pos.board.fill(EMPTY); pos.board[parseSquare('${square}')] = ${piece}`);
-    expect(e.read(`isAttacked(pos, parseSquare('${target}'), ${color})`)).toBe(expected);
+    e.run(`globalThis.board = new Int8Array(128); board[parseSquare('${square}')] = ${piece}`);
+    expect(e.read(`isAttacked(board, parseSquare('${target}'), ${color})`)).toBe(expected);
   }
-  e.run("pos.board.fill(EMPTY); pos.board[parseSquare('e1')] = ROOK; pos.board[parseSquare('e2')] = PAWN | 8");
-  expect(e.read("isAttacked(pos, parseSquare('e4'), WHITE)")).toBe(false);
+  e.run("globalThis.board = new Int8Array(128); board[parseSquare('e1')] = ROOK; board[parseSquare('e2')] = PAWN | 8");
+  expect(e.read("isAttacked(board, parseSquare('e4'), WHITE)")).toBe(false);
 });
 
 test("black pawn pushes, promotion choices and castling rights after rook capture", () => {
@@ -161,7 +163,7 @@ test("black pawn pushes, promotion choices and castling rights after rook captur
   expect(e.read("pos.castling")).toBe(5); // both queenside rook rights disappear
 });
 
-test("think finds a mate in one, returns its line and hands the position back unchanged", () => {
+test("think finds a mate in one, returns its line and leaves the position unchanged", () => {
   const e = engine();
   load(e, "fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1");
   const before = snapshot(e);
@@ -173,7 +175,7 @@ test("think finds a mate in one, returns its line and hands the position back un
   expect(snapshot(e)).toBe(before);
 });
 
-test("an interrupted search still finishes depth one and restores the position", () => {
+test("an interrupted search still finishes depth one", () => {
   const e = engine();
   load(e, "startpos");
   const before = snapshot(e);
