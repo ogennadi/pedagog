@@ -16,7 +16,8 @@
     --control: #fafaf8; --control-hover: #efede7;
   }
 }
-.settings-link { flex: none; margin-left: auto; color: var(--muted); text-decoration: none; font-size: 1.3rem; line-height: 1; }
+/* The gear at the end of the setup buttons: a square icon button. */
+.settings-link { margin-left: auto; width: 2.5rem; padding: 0; color: var(--muted); }
 .settings-link:hover { color: var(--text); }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
