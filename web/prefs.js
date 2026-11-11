@@ -79,7 +79,8 @@ export function pieceCss(set, scope, base) {
    by a conic gradient, two squares to a tile, so a1 (bottom left) is dark. */
 export function boardCss(theme, scope) {
   return `${scope} cg-board { background-color: ${theme.light}; background-image: ` +
-    `repeating-conic-gradient(${theme.dark} 0 25%, ${theme.light} 0 50%); background-size: 25% 25%; }`;
+    `repeating-conic-gradient(${theme.dark} 0 25%, ${theme.light} 0 50%); background-size: 25% 25%; } ` +
+    `${scope} .cg-wrap { --cg-light: ${theme.light}; --cg-dark: ${theme.dark}; }`;
 }
 
 /* Light or dark page colours (app.css), or none to follow the system setting. */
