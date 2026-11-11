@@ -12,7 +12,7 @@ GitHub Copilot CLI agent (version 1.0.83), on 2026-10-06.
 
 The harness does not expose exact token counts. Estimated from the session:
 Part I roughly 220,000 tokens of context (prompts, files read, tool output)
-and 100,000 generated, including three complete versions of `pedagog.js`;
+and 100,000 generated, including three complete versions of the engine (then `pedagog.js`, now `engine.js`);
 Part II roughly 250,000 tokens of context and 90,000 generated. Call it
 half a million tokens in all.
 
@@ -34,7 +34,7 @@ time management kept a one-second clock reserve. Then the brief changed:
 make Pedagog *feel* aggressive — sacrifices, checks, pieces swarming the king —
 while staying as strong as Maia-1900 at the top level.
 
-The style is three numbers (section S2 of `pedagog.js`, applied in `evaluate()`
+The style is three numbers (section S2 of `engine.js`, applied in `evaluate()`
 and at the root of the search):
 
 | knob | aggressive | plain | what it does |
@@ -112,9 +112,9 @@ Round 10: 61 pairings of 300 games (18,300 games) — every level against the le
 
 Both ladders are within 45 Elo of every target; fitted gaps average 98 (Pedagog) and 107 (Reference), and level 10 is above Maia-1900 in both (head-to-head +4 ± 34 and +16 ± 35). The bottom is the least certain: levels 2–3 are anchored only through Maia-1100, 500 Elo above them, and through the random mover, which Reference level 2 (one ply, no mate-in-one net) only beats about half the time — so level 1's fitted rating (656 here, 173 in round 9) says more about that pairing than about level 1. Across the ladder Pedagog gives about 3–5× as many checks (19–25 per 100 moves against 5–7), knowingly sacrifices 1.2–2.3× as often (3.2–5.2 against 1.6–4.2), and keeps its pieces about one square closer to the enemy king (5.1–5.3 against 6.0–6.1).
 
-![skill curve](docs/skill-curve.png)
+![skill curve](skill-curve.png)
 
-![aggression per level](docs/style.png)
+![aggression per level](style.png)
 
 ### Blind testing the feel: Mystery mode
 
@@ -187,7 +187,7 @@ the full engine.
 ### What a level is
 
 Below full strength the engine is weakened the way Gaia does it, with the
-knobs that were measured to matter (section S2 of `pedagog.js`):
+knobs that were measured to matter (section S2 of `engine.js`):
 
 | knob | what it does | measured at depth 2, vs the same depth unhandicapped |
 |---|---|---|
@@ -274,7 +274,7 @@ ladder; these rates have not been re-measured.)
 
 ### The web app
 
-`index.html` + `web/`: chessground for the board, cm-chess for legality
+`web/` (`web/index.html`): chessground for the board, cm-chess for legality
 (including Chess960 castling), the engine in a Web Worker. Human vs bot or
 bot vs bot, a level per bot, standard or Chess960 (position 0–959 or random,
 selector shown only for that variant), move list with the opening's name,
@@ -305,12 +305,12 @@ chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
 app and single-file bundle include chessground and are distributed under
 GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
 to CC0 separately. The
-standalone `pedagog.js` engine is independent of the web dependencies. See
+standalone `engine.js` is independent of the web dependencies. See
 `LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
 
 ### Tools
 
-`tools/match.js` (cutechess wrapper; see [`tools/README.md`](tools/README.md) for executable
+`tools/match.js` (cutechess wrapper; see [`tools/README.md`](../tools/README.md) for executable
 configuration, seeded runs, fixed `st=1`, and previous-engine comparisons;
 also `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
@@ -433,13 +433,17 @@ and PeSTO only if the engine turned out too weak, and it did not.
 
 ## Files
 
-- `pedagog.js` — the engine, one file, read top to bottom.
-- `index.html`, `web/`, `sw.js` — the web app (Part II); `bun run web` serves it.
-- `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
-- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, bundler.
-- `docs/` — `skill-curve.png`, `skill-curve.json` (Part III ladders), `blunders.json` (round 9);
-  `calibration-baseline/` holds the PGNs behind each published fit.
-- `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`, `bun run bundle`, `bun run match`, `bun run elo`.
+- `engine.js` — the engine, one file, read top to bottom (called `pedagog.js` before Part III).
+- `web/` — the web app (Part II): `index.html`, scripts, styles, the service worker and the
+  vendored libraries; `bun run web` serves it with the engine beside it.
+- `dist/` — generated, ignored: `bun run build` assembles the deployable site there, and
+  `bun run bundle` writes `dist/pedagog-app.html`, the same app as one self-contained file.
+- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, build, bundler.
+- `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
+  `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs
+  behind each published fit.
+- `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`,
+  `bun run build`, `bun run bundle`, `bun run match`, `bun run elo`.
 
 The original development suite used an isolated VM harness and frozen
 transcript fixtures to exercise search, UCI, fake-clock timing, evaluation,

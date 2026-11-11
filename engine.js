@@ -7,8 +7,8 @@
    The most interesting part, the search, comes first; the
    plumbing that makes it a program comes last.
 
-   Runs in Bun (`bun pedagog.js`) or in a browser Web Worker
-   (`new Worker("pedagog.js")`, post UCI strings, receive lines).
+   Runs in Bun (`bun engine.js`) or in a browser Web Worker
+   (`new Worker("engine.js")`, post UCI strings, receive lines).
 
    Supports standard chess and Chess960 (UCI_Chess960),
    a deterministic Skill_Seed (as in Gaia), and the Hash/Threads
@@ -26,7 +26,7 @@
    the way Gaia does it: the engine looks less far ahead, misjudges
    some positions on purpose, and overlooks some moves entirely. Each
    style has its own ladder, so a level is equally strong in either
-   (see COLOPHON.md for the measurements).
+   (see docs/COLOPHON.md for the measurements).
 
    HOW TO READ IT
    Every function names what it needs in its parameters and hands
@@ -377,7 +377,7 @@ function limitsFor(go, side, level) {
    (Gaia has a fourth knob, evaluation fidelity, and a small error
    on every position. Both were measured here and found to be worth
    nothing with this evaluation, so they were left out; see
-   COLOPHON.md.)
+   docs/COLOPHON.md.)
 
    Every choice is drawn from the position's hash and the Skill_Seed,
    never from the clock or a random generator, so a level misjudges
@@ -385,7 +385,7 @@ function limitsFor(go, side, level) {
    a tremor. Level 1 is apart: it plays a random legal move, but
    always mates in one when it can. Levels 2..SKILL_MAX come from
    the style's ladder below (LADDER or AGGRESSIVE_LADDER); their
-   ratings were measured against Maia and are recorded in COLOPHON.md.
+   ratings were measured against Maia and are recorded in docs/COLOPHON.md.
 
    A skill is a frozen value made by skillFor(level, seed, aggressive); the
    functions below take it as an argument.
@@ -412,7 +412,7 @@ const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
 /* The ladder, from a beginner's opponent up to Maia-1900's strength,
    evenly spaced about 100 Elo apart. The ratings are on the Lichess
    classical scale: Maia-1900's bot (maia9) was rated 1755 there, and
-   the fit is anchored on it (see COLOPHON.md). Every level is a depth,
+   the fit is anchored on it (see docs/COLOPHON.md). Every level is a depth,
    never a time budget, so it plays the same on any machine. This is the
    plain style's ladder (UCI option Aggressive off). */
 const LADDER = [
@@ -1304,7 +1304,7 @@ function display(pos, skill, chess960, out) {
 /* ---- Start-up and I/O ---------------------------------------------
    Search is single-threaded, but normal UCI operation uses two
    threads: the main thread reads input and the worker searches.
-   In a browser, the page is the main thread (see index.html).
+   In a browser, the page is the main thread (see web/index.html).
    The direct Bun bench command below runs without a worker.
 
    Search is synchronous: the worker cannot process another message
@@ -1323,7 +1323,7 @@ const inWorker = isBun ? !Bun.isMainThread
 
 if (isBun && Bun.isMainThread) {
   if (process.argv[2] === "bench") {
-    // `bun pedagog.js bench [depth]`, as OpenBench runs it.
+    // `bun engine.js bench [depth]`, as OpenBench runs it.
     const io = { out: (line) => console.log(line), now, shouldStop: () => false };
     uciCommand(newSession(), "bench " + (process.argv[3] || ""), io);
     process.exit(0);

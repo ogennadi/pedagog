@@ -4,7 +4,7 @@ import { createContext, runInContext } from "node:vm";
 
 // An isolated non-Bun host avoids stdin/workers and keeps test access
 // to internals out of the engine's public UCI interface.
-export function engine(path = resolve(import.meta.dir, "..", "pedagog.js")) {
+export function engine(path = resolve(import.meta.dir, "..", "engine.js")) {
   let time = 0;
   const output = [];
   const context = createContext({

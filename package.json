@@ -2,13 +2,14 @@
   "name": "pedagog",
   "version": "1.0.0",
   "description": "A single-file, pedagogical UCI chess engine in JavaScript (Bun or browser)",
-  "main": "pedagog.js",
+  "main": "engine.js",
   "scripts": {
-    "start": "bun pedagog.js",
-    "bench": "bun pedagog.js bench",
-    "perft": "bun pedagog.js perft",
+    "start": "bun engine.js",
+    "bench": "bun engine.js bench",
+    "perft": "bun engine.js perft",
     "web": "bun tools/serve.js",
     "bundle": "bun tools/bundle.js",
+    "build": "bun tools/build.js",
     "test": "bun test tests/rules.test.js",
     "match": "bun tools/match.js",
     "elo": "bun tools/elo.js"

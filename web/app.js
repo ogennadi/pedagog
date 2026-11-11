@@ -6,7 +6,7 @@ import { BOOK } from "./book.js";
 
 const $ = (id) => document.getElementById(id);
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-const LEVEL_ELO = [173, 945, 1046, 1148, 1249, 1350, 1451, 1553, 1654, 1755];   // Lichess-classical scale, see COLOPHON.md
+const LEVEL_ELO = [173, 945, 1046, 1148, 1249, 1350, 1451, 1553, 1654, 1755];   // Lichess-classical scale, see docs/COLOPHON.md
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 const STORAGE_KEY = "pedagog-session-v1";
 const MYSTERY_LOG_KEY = "pedagog-mystery-log-v1";
@@ -28,7 +28,7 @@ class Engine {
       // refused). Give a cold first load (service worker installing, files still downloading)
       // plenty of time before giving up on it.
       const source = globalThis.PEDAGOG_ENGINE_SOURCE;
-      const worker = new Worker(source ? URL.createObjectURL(new Blob([source], { type: "text/javascript" })) : "pedagog.js");
+      const worker = new Worker(source ? URL.createObjectURL(new Blob([source], { type: "text/javascript" })) : "engine.js");
       worker.onmessage = (e) => this.onLine(e.data);
       const ok = await new Promise((resolve) => {
         worker.onerror = () => resolve(false);
@@ -45,7 +45,7 @@ class Engine {
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
         if (globalThis.PEDAGOG_ENGINE_SOURCE) { s.textContent = globalThis.PEDAGOG_ENGINE_SOURCE; document.head.appendChild(s); resolve(); return; }
-        s.src = "pedagog.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load pedagog.js"));
+        s.src = "engine.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load engine.js"));
         document.head.appendChild(s);
       });
       globalThis.Pedagog.setOutput((line) => this.onLine(line));

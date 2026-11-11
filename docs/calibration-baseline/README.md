@@ -6,7 +6,7 @@ Two archived match sets, each with the SHA-256 hash and game count of every PGN:
   61 PGNs (18,300 games) behind the published `docs/skill-curve.json`, `docs/skill-curve.png`
   and `docs/style.json`, played by the engine of commit `bebea84` (both ladders, both styles).
 - **Round 9** (historical, Part II): `round-9-pgns.zip` and `manifest.json` — the 30 PGNs
-  (8,900 games) behind the round-9 ladder table in `COLOPHON.md`. It no longer matches the
+  (8,900 games) behind the round-9 ladder table in `docs/COLOPHON.md`. It no longer matches the
   engine.
 
 Extract an archive to a fresh directory, then pass the files explicitly to the tools. For

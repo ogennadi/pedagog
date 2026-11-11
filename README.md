@@ -1,6 +1,8 @@
 # Pedagog
 
-<img src="logo.png" alt="Pedagog logo" width="160" height="160">
+<img src="docs/logo.png" alt="Pedagog logo" width="160" height="160">
+
+**The engine is one file, [`engine.js`](engine.js): read it top to bottom.**
 
 Pedagog is a small, educational chess engine written in JavaScript. It speaks
 UCI and runs under Bun or in the browser. By default it plays an attacking
@@ -22,17 +24,28 @@ bun run bench                 # built-in engine benchmark
 bun run perft                 # built-in perft command
 bun test                      # rules, perft and basic search/UCI tests
 bun run web                   # http://localhost:8080
-bun run bundle                # creates pedagog-app.html
+bun run build                 # creates dist/, the deployable web app
+bun run bundle                # creates dist/pedagog-app.html
 ```
 
-The multi-file app is served from `index.html` by `bun run web`; the bundled
-`pedagog-app.html` can be opened directly from disk. The bundle is generated
-and ignored by Git. The engine itself is `pedagog.js`.
+The repository is laid out as:
+
+- `engine.js` — the engine, the only code at the top level.
+- `web/` — the web app (`index.html`, its scripts and styles, the service
+  worker, vendored libraries).
+- `tests/` — `bun test`; `tools/` — match runner, Elo fit, style statistics,
+  plots, server, build; `docs/` — the COLOPHON (how it was made and measured),
+  calibration data and figures.
+
+`bun run web` serves `web/` with the engine beside it, the same layout
+`bun run build` writes to `dist/`: deploy the contents of `dist/` as the site
+root. The bundled `dist/pedagog-app.html` can be opened directly from disk.
+Both are generated and ignored by Git.
 
 ### Release build
 
-Run `bun test` and `bun run bundle` before publishing. Attach the generated
-`pedagog-app.html` only with the matching source and license materials; the
+Run `bun test`, `bun run build` and `bun run bundle` before publishing. Attach
+the generated `pedagog-app.html` only with the matching source and license materials; the
 bundle embeds the third-party license texts, and the combined app includes
 GPL-3.0-or-later chessground. Do not commit the generated HTML as source.
 
@@ -58,7 +71,7 @@ reductions (LMR), killer and history heuristics, check extensions, delta
 pruning, and incremental evaluation.
 The evaluation uses neither PeSTO tables nor a neural network. These choices
 keep the engine small and educational; see the
-[COLOPHON](COLOPHON.md#what-was-deliberately-left-out) for the historical
+[COLOPHON](docs/COLOPHON.md#what-was-deliberately-left-out) for the historical
 measurements behind the search simplifications. Quiescence search and MVV-LVA,
 once left out, are back: the aggressive style needs them to calculate its
 sacrifices, and both styles use them.
@@ -100,7 +113,7 @@ go movetime 1000
 
 See [`tools/README.md`](tools/README.md) for match setup and analysis commands,
 the [calibration archive](docs/calibration-baseline/README.md) for reproducing
-the published Elo fit, and [`COLOPHON.md`](COLOPHON.md) for the measurement
+the published Elo fit, and [`COLOPHON.md`](docs/COLOPHON.md) for the measurement
 method and interpretation.
 
 ## Licensing

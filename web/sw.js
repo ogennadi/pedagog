@@ -1,17 +1,17 @@
 /* Service worker: the whole app is cached on first visit so it keeps working offline.
    Requests go to the network first (so updates arrive when online) and fall back to the cache. */
-const CACHE = "pedagog-v3";
+const CACHE = "pedagog-v4";
 const FILES = [
-  "./", "index.html", "pedagog.js", "web/app.js", "web/book.js", "web/app.css", "web/manifest.json",
-  "web/icon-32.png", "web/icon-180.png", "web/icon-192.png", "web/icon-512.png",
-  "web/vendor/chessground/chessground.min.js",
-  "web/vendor/chessground/chessground.base.css",
-  "web/vendor/chessground/chessground.brown.css",
-  "web/vendor/chessground/chessground.cburnett.css",
-  "web/vendor/cm-chess/src/Chess.js",
-  "web/vendor/cm-pgn/src/Pgn.js", "web/vendor/cm-pgn/src/Header.js", "web/vendor/cm-pgn/src/History.js",
-  "web/vendor/cm-pgn/src/parser/pgnParser.js",
-  "web/vendor/chess.mjs/src/Chess.js",
+  "./", "index.html", "engine.js", "app.js", "book.js", "app.css", "manifest.json",
+  "icon-32.png", "icon-180.png", "icon-192.png", "icon-512.png",
+  "vendor/chessground/chessground.min.js",
+  "vendor/chessground/chessground.base.css",
+  "vendor/chessground/chessground.brown.css",
+  "vendor/chessground/chessground.cburnett.css",
+  "vendor/cm-chess/src/Chess.js",
+  "vendor/cm-pgn/src/Pgn.js", "vendor/cm-pgn/src/Header.js", "vendor/cm-pgn/src/History.js",
+  "vendor/cm-pgn/src/parser/pgnParser.js",
+  "vendor/chess.mjs/src/Chess.js",
 ];
 self.addEventListener("install", (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting())));
 self.addEventListener("activate", (e) => e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())));

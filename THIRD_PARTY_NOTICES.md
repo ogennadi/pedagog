@@ -15,5 +15,5 @@ preserved in their respective `LICENSE` files.
 The web application and the generated single-file `pedagog-app.html` include
 chessground and are distributed as combined works under GPL-3.0-or-later terms.
 The single-file build embeds the dependency license texts. The standalone
-`pedagog.js` engine is independent of these dependencies. No third-party
+`engine.js` is independent of these dependencies. No third-party
 component is relicensed by the CC0 dedication.
