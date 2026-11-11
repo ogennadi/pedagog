@@ -167,7 +167,7 @@ test("think finds a mate in one, returns its line and leaves the position unchan
   const e = engine();
   load(e, "fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1");
   const before = snapshot(e);
-  e.run(`globalThis.result = think(pos, limitsFor({ depth: 3 }, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0), ${quietIo})`);
+  e.run(`globalThis.result = think(pos, limitsFor({ depth: 3 }, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0, true), ${quietIo})`);
   expect(e.read("moveToUci(result.bestMove, false)")).toBe("d1d8");
   expect(e.read("result.score")).toBe(e.read("MATE - 1"));
   expect(e.read("result.pv.length")).toBe(1);
@@ -179,7 +179,7 @@ test("an interrupted search still finishes depth one", () => {
   const e = engine();
   load(e, "startpos");
   const before = snapshot(e);
-  e.run(`globalThis.result = think(pos, limitsFor({}, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0), { now: () => 0, shouldStop: () => true, onInfo: () => {} })`);
+  e.run(`globalThis.result = think(pos, limitsFor({}, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0, true), { now: () => 0, shouldStop: () => true, onInfo: () => {} })`);
   expect(e.read("result.depth")).toBeGreaterThanOrEqual(1);
   expect(e.read("result.depth")).toBeLessThan(5);
   expect(e.read("legalMoves(pos).includes(result.bestMove)")).toBe(true);
@@ -214,4 +214,18 @@ test("UCI session: options and positions carry over between commands", () => {
   e.command("position fen r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1 moves e1g1");
   e.command("d");
   expect(e.output.find((line) => line.startsWith("fen "))).toBe("fen r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
+});
+
+test("the Aggressive option chooses the style and its ladder", () => {
+  const e = engine();
+  e.command("uci");
+  expect(e.output).toContain("option name Aggressive type check default true");
+  expect(e.read("skillFor(SKILL_MAX, 0, true).checkBias")).toBeGreaterThan(0);
+  expect(e.read("skillFor(SKILL_MAX, 0, false).checkBias")).toBe(0);
+  expect(e.read("skillFor(5, 0, false).kingAttack")).toBe(0);
+  expect(e.read("skillFor(5, 0, true).kingAttack")).toBeGreaterThan(0);
+  e.command("setoption name Aggressive value false");
+  e.command("position fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1");
+  e.command("go depth 3");
+  expect(e.output.at(-1)).toBe("bestmove d1d8");
 });

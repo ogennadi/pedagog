@@ -100,6 +100,7 @@ const MAX_PLY = 100;              // longest line the search will follow
 const INF = 32500;
 const MATE = 32000;               // mate in N plies scores MATE - N
 const MATE_IN_MAX = MATE - MAX_PLY;
+const DRAW = 0;
 
 const FLAG_EP = 1, FLAG_CASTLE = 2;
 
@@ -123,12 +124,11 @@ const now = () => performance.now();
    The search answers one question: which move is best? It looks
    ahead a fixed number of plies with negamax alpha-beta, trying
    captures first, and asks the static evaluation about the
-   positions at the leaves. That is the whole search: there is no
-   quiescence search, no hash table and no pruning beyond alpha-beta
-   itself. (The missing quiescence search shows: a leaf in the middle
-   of an exchange is judged as if the exchange were over, the
-   "horizon effect", and the score swings between odd and even
-   depths.)
+   positions at the leaves, after a short quiescence search has
+   played out the captures pending there (a leaf in the middle of an
+   exchange is otherwise judged as if the exchange were over, the
+   "horizon effect"). That is the whole search: there is no hash
+   table and no pruning beyond alpha-beta itself.
 
    think(pos, limits, skill, io)
                iterative deepening: depth 1, 2, 3, ... until a limit
@@ -155,6 +155,7 @@ const now = () => performance.now();
 */
 
 const NO_LINE = Object.freeze([]);
+const QUIESCE_PLIES = 4; // captures followed past a leaf
 
 /* Choose a move for `pos` within `limits` (from limitsFor()), playing
    as `skill` (from skillFor()). `io` supplies the clock, `now()`; a
@@ -179,9 +180,6 @@ function think(pos, limits, skill, io) {
 
   const unseen = overlookedRootMoves(pos, skill, rootMoves);
   const maxDepth = Math.min(limits.depth, skillDepth(pos, skill));
-  // A draw is worth -contempt to the side we play, +contempt to the other.
-  const rootSide = pos.side;
-  const drawFor = (side) => (side === rootSide ? -skill.contempt : skill.contempt);
   let nodes = 0, stopped = false, rootDepth = 0;
   let best = {
     bestMove: rootMoves.find((move) => !unseen.includes(move)),
@@ -190,7 +188,7 @@ function think(pos, limits, skill, io) {
 
   for (let depth = 1; depth <= maxDepth; depth++) {
     rootDepth = depth;
-    const { score, pv } = search(pos, -INF, INF, depth, 0);
+    const { score, pv } = search(pos, -INF, INF, depth, 0, best.pv);
     if (stopped) break; // an interrupted depth cannot replace `best`
     best = { bestMove: pv[0], depth, score, nodes, elapsed: io.now() - startTime, pv };
     io.onInfo(best);
@@ -206,32 +204,37 @@ function think(pos, limits, skill, io) {
   }
 
   /* Negamax to a fixed depth: terminate, try moves, keep the best line,
-     and stop at a beta cutoff. */
-  function search(pos, alpha, beta, depth, ply) {
+     and stop at a beta cutoff. `hint` is what remains of the previous
+     depth's best line along this path (or NO_LINE): its first move is
+     tried first, as it is likely the best again. */
+  function search(pos, alpha, beta, depth, ply, hint) {
     nodes++;
     if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached()) stopped = true;
     if (stopped) return { score: 0, pv: NO_LINE };
-    if (ply > 0 && isDraw(pos)) return { score: drawFor(pos.side), pv: NO_LINE };
+    if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
     if (depth === 0 || ply >= MAX_PLY - 1) { // a leaf
-      const score = skill.quiescence ? quiesce(pos, alpha, beta, ply) : judge(pos, skill);
-      return { score, pv: NO_LINE };
+      return { score: quiesce(pos, alpha, beta, ply, QUIESCE_PLIES), pv: NO_LINE };
     }
 
     let bestScore = -INF, pv = NO_LINE;
     let raisedAlpha = alpha; // alpha, raised as better moves are found
     let legalMoveCount = 0, searchedMoveCount = 0;
-    const moves = generateMoves(pos);
-    for (const move of skill.captureOrder ? orderByValue(pos, moves) : orderMoves(pos, moves)) {
+    for (const move of orderMoves(pos, generateMoves(pos), hint[0])) {
       if (ply === 0 && unseen.includes(move)) continue;
       const next = makeMove(pos, move);
       if (next === null) continue;              // leaves our king in check
       legalMoveCount++;
       if (ply > 0 && !seesMove(next, skill, move, ply)) continue;
       searchedMoveCount++;
-      const child = search(next, -beta, -raisedAlpha, depth - 1, ply + 1);
+      // At the root the style may favour checks: they count checkBias
+      // better, so the window is shifted by the same amount. A mate
+      // score is exact and keeps no bias.
+      const bias = ply === 0 && inCheck(next) ? skill.checkBias : 0;
+      const childHint = move === hint[0] ? hint.slice(1) : NO_LINE;
+      const child = search(next, bias - beta, bias - raisedAlpha, depth - 1, ply + 1, childHint);
       if (stopped) return { score: 0, pv: NO_LINE };
 
-      const score = -child.score;
+      const score = Math.abs(child.score) >= MATE_IN_MAX ? -child.score : bias - child.score;
       if (score > bestScore) {
         bestScore = score;
         if (score > raisedAlpha) {
@@ -242,8 +245,7 @@ function think(pos, limits, skill, io) {
       }
     }
 
-    if (legalMoveCount === 0)
-      return { score: inCheck(pos) ? -MATE + ply : drawFor(pos.side), pv: NO_LINE };
+    if (legalMoveCount === 0) return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
     if (searchedMoveCount === 0) // overlooked every legal move
       return { score: judge(pos, skill), pv: NO_LINE };
     return { score: bestScore, pv };
@@ -252,18 +254,20 @@ function think(pos, limits, skill, io) {
   /* Quiescence: at a leaf, keep trying captures (and promotions) until
      the position is quiet, so a leaf is not judged in the middle of an
      exchange. The side to move may always "stand pat" instead: decline
-     every capture and take the leaf's own judgement. Returns a score. */
-  function quiesce(pos, alpha, beta, ply) {
+     every capture and take the leaf's own judgement. Only `pliesLeft`
+     more captures are followed, as long sequences cost much and change
+     little. Returns a score. */
+  function quiesce(pos, alpha, beta, ply, pliesLeft) {
     nodes++;
     if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached()) stopped = true;
     if (stopped) return 0;
     const standPat = judge(pos, skill);
-    if (standPat >= beta || ply >= MAX_PLY - 1) return standPat;
+    if (standPat >= beta || pliesLeft === 0 || ply >= MAX_PLY - 1) return standPat;
     let bestScore = standPat, raisedAlpha = Math.max(alpha, standPat);
     for (const move of capturesByValue(pos, generateMoves(pos))) {
       const next = makeMove(pos, move);
       if (next === null) continue;
-      const score = -quiesce(next, -beta, -raisedAlpha, ply + 1);
+      const score = -quiesce(next, -beta, -raisedAlpha, ply + 1, pliesLeft - 1);
       if (stopped) return 0;
       if (score > bestScore) {
         bestScore = score;
@@ -278,22 +282,16 @@ function think(pos, limits, skill, io) {
 }
 
 /* ---- Move ordering --------------------------------------------
-   Alpha-beta prunes most when a good move is tried first, and the
-   simplest guess at a good move is a capture. So: captures (and
-   en passant and promotions) first, then the quiet moves, each group
-   in the order it was generated. Castling is encoded as "king takes
-   own rook", so it lands in the first group too. Ranking the
-   captures themselves (most valuable victim first, MVV-LVA) is the
-   next refinement: orderByValue() below, used at full strength.
-   Returns a new array. */
-function orderMoves(pos, moves) {
-  const board = pos.board, early = [], late = [];
-  for (const move of moves) {
-    if (board[moveTo(move)] !== EMPTY || moveFlag(move) === FLAG_EP || movePromo(move) !== 0)
-      early.push(move);
-    else late.push(move);
-  }
-  return early.concat(late);
+   Alpha-beta prunes most when a good move is tried first. The best
+   guess is the move that was best at the previous depth (`first`, if
+   any); after it come the captures (and promotions), the most
+   valuable victim first and, among equal victims, the least valuable
+   attacker first (MVV-LVA); then the quiet moves, in the order they
+   were generated. Returns a new array. */
+function orderMoves(pos, moves, first) {
+  const rest = moves.filter((move) => move !== first);
+  const ordered = capturesByValue(pos, rest).concat(rest.filter((move) => !isCapture(pos, move)));
+  return rest.length < moves.length ? [first, ...ordered] : ordered;
 }
 
 /* Does `move` take a piece or promote? Castling ("king takes own
@@ -313,12 +311,6 @@ function capturesByValue(pos, moves) {
   return moves.filter((move) => isCapture(pos, move)).sort((a, b) => gain(b) - gain(a));
 }
 
-/* `moves` with the captures ranked by value first, then the rest in
-   the order they were generated. Returns a new array. */
-function orderByValue(pos, moves) {
-  return capturesByValue(pos, moves).concat(moves.filter((move) => !isCapture(pos, move)));
-}
-
 /* ---- Time management -------------------------------------------
    Turn the numbers of a UCI "go" command into search limits for the
    side to move: { depth, nodes, softMs, hardMs }. Two time budgets:
@@ -328,9 +320,10 @@ function orderByValue(pos, moves) {
    search cannot see (passing messages, other programs, garbage
    collection), and a player that lives on its increment loses on
    time to the first such hiccup. Below the reserve only part of the
-   increment is spent, so the clock climbs back. Below full strength
-   the clock is ignored: a level is a depth, never a time budget, so
-   it plays the same on any machine. */
+   increment is spent, so the clock climbs back. Every level is a depth,
+   never a time budget, so it plays the same on any machine; below
+   SKILL_MAX the clock is ignored altogether, and at SKILL_MAX it only
+   cuts a search short so that a fast game is never lost on time. */
 function limitsFor(go, side, level) {
   const untimed = {
     depth: go.depth || MAX_PLY, nodes: go.nodes || 0,
@@ -357,8 +350,8 @@ function limitsFor(go, side, level) {
    ================================================================
 
    Deliberately weakened play, for opponents meant to be beatable,
-   after Gaia (jromang/gaiachess, src/skill.rs). At full strength
-   every function here is inert and the search is exactly S1.
+   after Gaia (jromang/gaiachess, src/skill.rs). At SKILL_MAX only the
+   depth knob below is left; blunders and vision are inert.
 
    Searching less far is not enough on its own: a shallow but
    otherwise flawless player is dull, never careless. So a level
@@ -386,11 +379,11 @@ function limitsFor(go, side, level) {
    never from the clock or a random generator, so a level misjudges
    the same position the same way every time: stable blind spots, not
    a tremor. Level 1 is apart: it plays a random legal move, but
-   always mates in one when it can. Levels 2..SKILL_MAX-1 come from
+   always mates in one when it can. Levels 2..SKILL_MAX come from
    the LADDER below; their ratings were measured against Maia and
    are recorded in COLOPHON.md.
 
-   A skill is a frozen value made by skillFor(level, seed); the
+   A skill is a frozen value made by skillFor(level, seed, aggressive); the
    functions below take it as an argument.
 */
 
@@ -412,55 +405,73 @@ const ZOBRIST_SEED = 0x2545F491;    // starts the key generator in S5
 const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
   ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
 
-/* The ladder, from a beginner's opponent to full strength, about 125 Elo a
-   rung as measured against Maia. The ratings are on the Lichess classical
-   scale: Maia-1900's bot (maia9) was rated 1755 there when this was
-   measured, and the fit is anchored on it (see COLOPHON.md). */
+/* The ladder, from a beginner's opponent up to Maia-1900's strength,
+   evenly spaced about 100 Elo apart. The ratings are on the Lichess
+   classical scale: Maia-1900's bot (maia9) was rated 1755 there, and
+   the fit is anchored on it (see COLOPHON.md). Every level is a depth,
+   never a time budget, so it plays the same on any machine. This is the
+   plain style's ladder (UCI option Aggressive off). */
 const LADDER = [
-  //   depth  deeper  blunder  b/1000  vision             measured Elo
-  null,                                          //  1  random mover    ~170
-  rung(2,     100,     500,     45,     860),    //  2                  945
-  rung(2,     200,     450,     40,     910),    //  3                 1072
-  rung(2,     400,     400,     35,     945),    //  4                 1195
-  rung(2,     650,     400,     25,     967),    //  5                 1309
-  rung(3,       0,     350,     20,     980),    //  6                 1417
-  rung(3,     650,     300,     15,    1000),    //  7                 1553
-  rung(4,      50,       0,      0,    FULL_VISION),   //  8           1656
-  rung(4,     600,       0,      0,    FULL_VISION),   //  9           1789
-  rung(MAX_PLY, 0,       0,      0,    FULL_VISION), // 10 full strength 1894
+  //   depth  deeper  blunder  b/1000  vision           target  measured
+  null,                                          //  1    ~170
+  rung(1,       0,     800,     76,     560),    //  2     945     ~940
+  rung(1,       0,     700,     66,     670),    //  3    1046     1035
+  rung(1,     400,     660,     61,     710),    //  4    1148     1164
+  rung(1,     780,     615,     57,     745),    //  5    1249     1223
+  rung(2,       5,     555,     51,     805),    //  6    1350     1328
+  rung(2,     150,     480,     43,     875),    //  7    1451     1429
+  rung(2,     360,     415,     35,     930),    //  8    1553     1547
+  rung(2,     690,     380,     26,     962),    //  9    1654     1668
+  rung(3,      60,     330,     19,     985),    // 10    1755     1790
 ];
 
-/* Full strength's playing style: eager to attack, unwilling to draw.
-     contempt    a draw counts as this many centipawns lost for the side
-                 the engine plays, so it avoids repetitions and dead
-                 simplifications;
+/* The aggressive style's ladder (UCI option Aggressive on, the default),
+   to the same targets. Its style costs strength (at equal knobs the
+   plain style wins by about 200 Elo), so each rung looks further ahead
+   and errs less than the plain rung with the same number. */
+const AGGRESSIVE_LADDER = [
+  //   depth  deeper  blunder  b/1000  vision           target  measured
+  null,                                          //  1    ~170
+  rung(1,     200,     720,     68,     640),    //  2     945      958
+  rung(1,     550,     655,     62,     705),    //  3    1046     1064
+  rung(2,       5,     575,     52,     785),    //  4    1148     1164
+  rung(2,      90,     475,     44,     868),    //  5    1249     1284
+  rung(2,     300,     425,     37,     925),    //  6    1350     1376
+  rung(2,     570,     393,     28,     956),    //  7    1451     1474
+  rung(2,     950,     355,     22,     975),    //  8    1553     1559
+  rung(3,     640,     260,     14,     996),    //  9    1654     1666
+  rung(4,     420,       0,      0,    FULL_VISION),   // 10  1755     1750
+];
+
+/* The two playing styles. The aggressive one is eager to attack:
      kingAttack  middlegame bonus, per square, for each knight, bishop,
                  rook or queen standing closer to the enemy king (queens
                  count twice), so the pieces gather around the king;
      materialMg  middlegame material counts this many permille of its
-                 value, so giving it up for an attack costs less.
-   The weakened levels keep the plain style: their ratings were
-   measured without it. */
-const AGGRESSIVE = {
-  contempt: 0, kingAttack: 120, materialMg: 150, quiescence: true, captureOrder: false,
-};
-const PLAIN = {
-  contempt: 0, kingAttack: 0, materialMg: 1000, quiescence: false, captureOrder: false,
-};
+                 value, so giving it up for an attack costs less;
+     checkBias   at the root, a move that gives check counts this many
+                 centipawns better, so it is chosen over equal moves.
+   The plain style turns all of that off. evaluate() in S3 applies the
+   first two. */
+const AGGRESSIVE = { kingAttack: 60, materialMg: 250, checkBias: 60 };
+const PLAIN = { kingAttack: 0, materialMg: 1000, checkBias: 0 };
 
-/* The skill for a Skill_Level (clamped to 1..SKILL_MAX) and a
-   Skill_Seed. The seed picks which weakened opponent a level is; 0
-   means the built-in one, so an engine nobody configures still plays
-   the same game twice. At full strength nothing is drawn from it.
-   Level 1 has no rung; it borrows full strength's (unused) knobs. */
-function skillFor(level, seed) {
+/* The skill for a Skill_Level (clamped to 1..SKILL_MAX), a Skill_Seed
+   and the Aggressive option: its style, and its rung of that style's
+   ladder. The seed picks which weakened opponent a level is; 0 means
+   the built-in one, so an engine nobody configures still plays the same
+   game twice. Level 1 has no rung; it borrows SKILL_MAX's (unused)
+   knobs. */
+function skillFor(level, seed, aggressive) {
   const clamped = Math.min(SKILL_MAX, Math.max(1, level | 0));
   const seedInt = seed | 0;
+  const ladder = aggressive ? AGGRESSIVE_LADDER : LADDER;
   return Object.freeze({
-    ...(LADDER[clamped - 1] || LADDER[SKILL_MAX - 1]),
-    ...(clamped === SKILL_MAX ? AGGRESSIVE : PLAIN),
+    ...(ladder[clamped - 1] || ladder[SKILL_MAX - 1]),
+    ...(aggressive ? AGGRESSIVE : PLAIN),
     level: clamped,
     seed: seedInt,
+    aggressive,
     seedKey: mix32(seedInt === 0 ? BUILT_IN_SEED : seedInt),
   });
 }
@@ -473,49 +484,12 @@ function skillDepth(pos, skill) {
   return skill.depth + (hash % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
-/* What this skill makes of `pos`: the evaluation, its style's view of
-   the position and, now and then, a misjudgement. This is what the
-   search sees at a leaf. */
+/* What this skill makes of `pos`: the evaluation in its style and,
+   now and then, a misjudgement. This is what the search sees at a
+   leaf. */
 function judge(pos, skill) {
-  return evaluate(pos) + styleBonus(pos, skill) + blunder(pos, skill);
+  return evaluate(pos, skill) + blunder(pos, skill);
 }
-
-/* The style's adjustment to the evaluation, in centipawns for the side
-   to move: kingAttack per square that each side's pieces stand closer
-   to the enemy king, less the discounted share of middlegame material.
-   Both fade out, like the middlegame tables, as material leaves. */
-function styleBonus(pos, skill) {
-  if (skill.kingAttack === 0 && skill.materialMg === 1000) return 0;
-  const board = pos.board;
-  let closeness = 0, material = 0, phase = 0; // white minus black
-  for (let sq = 0; sq < 128; sq++) {
-    if (sq & 0x88) { sq += 7; continue; }
-    const piece = board[sq];
-    if (piece === EMPTY) continue;
-    const type = piece & 7, sign = piece < 8 ? 1 : -1;
-    phase += PHASE_INC[type];
-    material += sign * MG_VALUE[type];
-    if (type >= KNIGHT && type <= QUEEN) {
-      const distance = KING_DISTANCE[sq - pos.kingSq[(piece >> 3) ^ 1] + 0x77];
-      closeness += sign * (7 - distance) * (type === QUEEN ? 2 : 1);
-    }
-  }
-  const mg = closeness * skill.kingAttack - material * (1000 - skill.materialMg) / 1000;
-  const score = (mg * Math.min(phase, 24) / 24) | 0;
-  return pos.side === WHITE ? score : -score;
-}
-
-/* King moves between two squares, looked up by their 0x88 difference:
-   KING_DISTANCE[a - b + 0x77]. The difference identifies the file and
-   rank offsets, which is a classic convenience of the 0x88 board. */
-const KING_DISTANCE = (() => {
-  const table = new Int8Array(239);
-  for (let df = -7; df <= 7; df++) {
-    for (let dr = -7; dr <= 7; dr++)
-      table[dr * 16 + df + 0x77] = Math.max(Math.abs(df), Math.abs(dr));
-  }
-  return table;
-})();
 
 /* The occasional misjudgement, added to the evaluation of the rung's
    share of positions: up to blunderWindow centipawns either way. Mate
@@ -579,8 +553,10 @@ function mix32(x) {
    rooks like the seventh rank, the king hides in the middlegame
    and comes out in the endgame.
 
-   evaluate(pos) simply walks the board and adds up material and
-   placement. (Real engines keep these sums up to date as each move
+   evaluate(pos, style) simply walks the board and adds up material
+   and placement, and the playing style's two terms (see S2): a
+   discount on middlegame material and a bonus for pieces near the
+   enemy king. (Real engines keep these sums up to date as each move
    is made, which is faster but spreads the evaluation over more
    than one function.) The skill level's occasional blunder is added
    separately, by judge() in S2.
@@ -627,8 +603,24 @@ function placementTables() {
 
 const [PLACE_MG, PLACE_EG] = placementTables();
 
-/* Static evaluation of `pos`, in centipawns for the side to move. */
-function evaluate(pos) {
+/* King moves between two squares, looked up by their 0x88 difference:
+   KING_DISTANCE[a - b + 0x77]. The difference identifies the file and
+   rank offsets, which is a classic convenience of the 0x88 board. */
+const KING_DISTANCE = (() => {
+  const table = new Int8Array(239);
+  for (let df = -7; df <= 7; df++) {
+    for (let dr = -7; dr <= 7; dr++)
+      table[dr * 16 + df + 0x77] = Math.max(Math.abs(df), Math.abs(dr));
+  }
+  return table;
+})();
+
+/* Static evaluation of `pos` in `style`, in centipawns for the side
+   to move. Middlegame material counts style.materialMg permille of its
+   value, and each knight, bishop, rook or queen earns style.kingAttack
+   in the middlegame for every square it stands closer to the enemy
+   king than the far side of the board (queens count twice). */
+function evaluate(pos, style) {
   const board = pos.board;
   let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
   for (let sq = 0; sq < 128; sq++) {
@@ -636,9 +628,13 @@ function evaluate(pos) {
     const piece = board[sq];
     if (piece === EMPTY) continue;
     const type = piece & 7, sign = piece < 8 ? 1 : -1;
-    mg += sign * MG_VALUE[type] + PLACE_MG[piece * 128 + sq];
+    mg += sign * MG_VALUE[type] * style.materialMg / 1000 + PLACE_MG[piece * 128 + sq];
     eg += sign * EG_VALUE[type] + PLACE_EG[piece * 128 + sq];
     phase += PHASE_INC[type];
+    if (type >= KNIGHT && type <= QUEEN) {
+      const distance = KING_DISTANCE[sq - pos.kingSq[(piece >> 3) ^ 1] + 0x77];
+      mg += sign * (7 - distance) * (type === QUEEN ? 2 : 1) * style.kingAttack;
+    }
   }
   // Taper from middlegame to endgame as material leaves the board.
   const tapered = Math.min(phase, 24);
@@ -1101,7 +1097,7 @@ function keyHigh(key) { return Math.floor(key / 2 ** 32) | 0; }
 */
 
 function newSession() {
-  return { pos: positionFromFen(START_FEN), skill: skillFor(SKILL_MAX, 0), chess960: false };
+  return { pos: positionFromFen(START_FEN), skill: skillFor(SKILL_MAX, 0, true), chess960: false };
 }
 
 function uciCommand(session, line, io) {
@@ -1121,11 +1117,14 @@ function uciCommand(session, line, io) {
       // Castling notation: king-takes-rook.
       io.out("option name UCI_Chess960 type check default false");
 
-      // 1 = random mover, SKILL_MAX = full strength
+      // 1 = random mover, SKILL_MAX = strongest
       io.out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
 
       // Which deterministic opponent; 0 = built-in.
       io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
+
+      // Playing style: aggressive (the default) or plain, each with its own ladder.
+      io.out("option name Aggressive type check default true");
 
       io.out("uciok");
       return session;
@@ -1138,10 +1137,16 @@ function uciCommand(session, line, io) {
       const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
       if (name === "uci_chess960")
         return { ...session, chess960: value.toLowerCase() === "true" };
-      if (name === "skill_level")
-        return { ...session, skill: skillFor(parseInt(value) || SKILL_MAX, skill.seed) };
+      if (name === "skill_level") {
+        const level = parseInt(value) || SKILL_MAX;
+        return { ...session, skill: skillFor(level, skill.seed, skill.aggressive) };
+      }
       if (name === "skill_seed")
-        return { ...session, skill: skillFor(skill.level, parseInt(value) || 0) };
+        return { ...session, skill: skillFor(skill.level, parseInt(value) || 0, skill.aggressive) };
+      if (name === "aggressive") {
+        const aggressive = value.toLowerCase() !== "false";
+        return { ...session, skill: skillFor(skill.level, skill.seed, aggressive) };
+      }
       return session; // "hash" and "threads" are accepted and ignored
     }
     case "isready":
@@ -1245,8 +1250,8 @@ function perftDivide(pos, depth, chess960, io) {
     `nps ${Math.round(total * 1000 / Math.max(1, ms))}`);
 }
 
-/* ---- Bench: a fixed set of positions to a fixed depth, at full
-   strength. OpenBench reads the final "N nodes M nps" line and uses
+/* ---- Bench: a fixed set of positions to a fixed depth, at the top
+   level. OpenBench reads the final "N nodes M nps" line and uses
    the node count as a signature of the search. */
 const BENCH_DEPTH = 5;
 const BENCH_FENS = [
@@ -1265,7 +1270,7 @@ const BENCH_FENS = [
 ];
 
 function bench(depth, io) {
-  const skill = skillFor(SKILL_MAX, 0);
+  const skill = skillFor(SKILL_MAX, 0, true);
   let totalNodes = 0, totalMs = 0;
   for (const fen of BENCH_FENS) {
     const pos = positionFromFen(fen);
