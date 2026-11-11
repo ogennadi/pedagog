@@ -84,7 +84,7 @@ revealed and the verdict kept in a local log, so the style can be judged blind
 over many games.
 
 The gear at the top right opens the settings page: light or dark appearance, board
-colours, and any of 35 Lichess piece sets, shown side by side on one page. The
+colours, and any of 38 piece sets (35 from Lichess), shown side by side on one page. The
 single-file build keeps the default pieces.
 
 ## UCI options

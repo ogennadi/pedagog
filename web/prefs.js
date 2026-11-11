@@ -5,10 +5,11 @@
 export const PREFS_KEY = "pedagog-prefs-v1";
 export const DEFAULT_PREFS = Object.freeze({ theme: "dark", pieces: "cburnett", board: "brown" });
 
-// The Lichess piece sets (lichess-org/lila, public/piece) whose licence lets us redistribute
-// them, as recorded in lila's COPYING.md. Sets without a licence text (alpha, chess7, companion,
-// governor, kosal, leipzig, reillycraig, riohacha) are left out. Files are in
-// web/vendor/lichess-pieces/<set>/; see LICENSES.md there. `nonCommercial` sets may not be used
+// The piece sets: Lichess's (lichess-org/lila, public/piece) whose licence lets us redistribute
+// them, as recorded in lila's COPYING.md, leaving out those without a licence text (alpha, chess7,
+// companion, governor, leipzig, reillycraig, riohacha); plus meridian and meridian_shaded
+// (kmar/chess_svg_piece_sets) and kosal (philatype/kosal). Files are in
+// web/vendor/pieces/<set>/; see LICENSES.md there. `nonCommercial` sets may not be used
 // commercially (CC BY-NC-SA), which the settings page points out.
 export const PIECE_SETS = [
   ["anarcandy", "CC BY-NC-SA 4.0"], ["caliente", "CC BY-NC-SA 4.0"],
@@ -17,7 +18,9 @@ export const PIECE_SETS = [
   ["disguised", "CC BY-NC-SA 4.0"], ["dubrovny", "CC BY-NC-SA 4.0"], ["fantasy", "MIT"],
   ["firi", "CC BY 4.0"], ["fresca", "CC BY-NC-SA 4.0"], ["gioco", "CC BY-NC-SA 4.0"],
   ["horsey", "CC BY-NC-SA 4.0"], ["icpieces", "CC BY-NC-SA 4.0"], ["kiwen-suwi", "CC BY 4.0"],
+  ["kosal", "CC BY 4.0"],
   ["letter", "AGPLv3+"], ["maestro", "CC BY-NC-SA 4.0"], ["merida", "GPLv2+"],
+  ["meridian", "CC0"], ["meridian_shaded", "CC0"],
   ["minimal-warmth", "CC BY-NC-SA 4.0"], ["monarchy", "CC BY-NC-SA 4.0"], ["mono", "GPLv2+"],
   ["mpchess", "GPLv3+"], ["papercut", "CC BY 4.0"], ["pirouetti", "AGPLv3+"],
   ["pixel", "AGPLv3+"], ["rhosgfx", "CC0 1.0"],
@@ -60,7 +63,7 @@ export function savePrefs(prefs) {
 }
 
 /* CSS that draws the pieces of `set` inside `scope` (a selector), from `base`, the URL of the
-   lichess-pieces directory. "mono" has one image per piece for both colours; "monarchy" is WebP. */
+   pieces directory. "mono" has one image per piece for both colours; "monarchy" is WebP. */
 export function pieceCss(set, scope, base) {
   const rules = [];
   for (const [role, letter] of Object.entries(ROLES)) {

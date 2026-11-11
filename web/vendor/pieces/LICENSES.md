@@ -1,13 +1,27 @@
-# Lichess piece sets
+# Piece sets
 
-The piece images in this directory are copied unmodified from Lichess (lichess-org/lila,
-`public/piece/<set>/`, fetched 2026-11-11). They are **not** covered by Pedagog's CC0 dedication;
-each set keeps its own licence. The table below is lila's own record (its `COPYING.md`),
-reproduced verbatim for the sets included here. Sets whose terms do not clearly allow
-redistribution were left out: `alpha`, `chess7`, `companion` and `leipzig` (freeware or
-personal use, no licence text), `reillycraig` and `riohacha` (no licence stated), and
-`governor` and `kosal` (not listed in lila's `COPYING.md`). The CC BY-NC-SA sets may not be
-used commercially; the settings page marks them.
+The piece images in this directory are copied unmodified. They are **not** covered by
+Pedagog's CC0 dedication; each set keeps its own licence.
+
+## From other projects
+
+Set | Source | Author | License
+--- | --- | --- | ---
+meridian, meridian_shaded | [kmar/chess_svg_piece_sets](https://github.com/kmar/chess_svg_piece_sets) | Martin Sedlák | CC0 / public domain (`any of these can be freely bundled with any programs, including commercial ones`); meridian copies a 1952 German newspaper design
+kosal | [philatype/kosal](https://github.com/philatype/kosal) | philatype | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+
+File names were changed to `wK.svg`/`bP.svg` and so on, to match the Lichess sets.
+
+## From Lichess
+
+These are from Lichess (lichess-org/lila, `public/piece/<set>/`, fetched 2026-11-11). The
+table below is lila's own record (its `COPYING.md`), reproduced verbatim for the sets
+included here. Sets whose terms do not clearly allow redistribution were left out: `alpha`,
+`chess7`, `companion` and `leipzig` (freeware or personal use, no licence text),
+`reillycraig` and `riohacha` (no licence stated), and `governor` (not listed in lila's
+`COPYING.md`). Lichess's `kosal` is replaced by the same set from its author's repository,
+where its licence is stated. The CC BY-NC-SA sets may not be used commercially; the settings
+page marks them.
 
 Path | Author | License
 --- | --- | ---

@@ -571,7 +571,7 @@ function applyPrefs() {
   applyTheme(prefs.theme);
   applyCss("board-theme-css", boardCss(BOARD_THEMES.find((t) => t.name === prefs.board), "html"));
   if (prefs.pieces !== "cburnett" && !globalThis.PEDAGOG_ENGINE_SOURCE)
-    applyCss("piece-set-css", pieceCss(prefs.pieces, "html .cg-wrap", "vendor/lichess-pieces"));
+    applyCss("piece-set-css", pieceCss(prefs.pieces, "html .cg-wrap", "vendor/pieces"));
 }
 
 applyPrefs();

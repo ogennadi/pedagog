@@ -7,7 +7,7 @@ import {
   applyTheme,
 } from "./prefs.js";
 
-const PIECES_BASE = "vendor/lichess-pieces";
+const PIECES_BASE = "vendor/pieces";
 // An open game, so every piece of both colours is on the board.
 const PREVIEW_FEN = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R";
 const $ = (id) => document.getElementById(id);
