@@ -6,12 +6,12 @@ import { BOOK } from "./book.js";
 
 const $ = (id) => document.getElementById(id);
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
-const FULL_STRENGTH = 10;
-const FULL_STRENGTH_MOVETIME = 1000;     // ms per move at level 10; lower levels are depth-bounded and ignore the clock
-const LEVEL_ELO = [173, 945, 1072, 1195, 1309, 1417, 1553, 1656, 1789, 1894];   // Lichess-classical scale, see COLOPHON.md
+const LEVEL_ELO = [173, 945, 1046, 1148, 1249, 1350, 1451, 1553, 1654, 1755];   // Lichess-classical scale, see COLOPHON.md
 const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9 };
 const STORAGE_KEY = "pedagog-session-v1";
-const SETTING_IDS = ["mode", "colour", "level", "level2", "variant", "position"];
+const MYSTERY_LOG_KEY = "pedagog-mystery-log-v1";
+const SETTING_IDS = ["mode", "colour", "opponent", "level", "level2", "variant", "position"];
+const OPPONENTS = ["pedagog", "reference", "mystery"];
 
 /* ---- Engine: UCI over postMessage. Falls back to running the engine on the main
    thread when the page is opened from file:// in a browser that refuses Workers there. */
@@ -66,13 +66,14 @@ class Engine {
     if (this.worker) this.worker.postMessage(cmd);
     else setTimeout(() => globalThis.Pedagog.uci(cmd), 0);   // let the UI paint before blocking
   }
-  async bestMove({ startFen, moves, level, chess960 }) {
+  async bestMove({ startFen, moves, level, aggressive, chess960 }) {
     await this.ready;
     this.send(`setoption name UCI_Chess960 value ${chess960}`);
+    this.send(`setoption name Aggressive value ${aggressive}`);
     this.send(`setoption name Skill_Level value ${level}`);
     this.send(`position fen ${startFen}${moves.length ? " moves " + moves.join(" ") : ""}`);
     const reply = this.waitFor((l) => l.startsWith("bestmove"));
-    this.send(level >= FULL_STRENGTH ? `go movetime ${FULL_STRENGTH_MOVETIME}` : "go depth 100");
+    this.send("go depth 100");   // every level is depth-bounded and ignores the clock
     return (await reply).split(/\s+/)[1];
   }
 }
@@ -135,6 +136,9 @@ function validateBook() {
 const engine = new Engine();
 let game, cg, startFen = START_FEN, variant = "standard";
 let players = { white: "human", black: 5 };      // "human" or a level number
+// Every bot in a game plays one style: Pedagog's (aggressive) or the reference's (plain). A mystery
+// game draws the style by coin flip and hides it until the player has rated the game.
+let opponent = { aggressive: true, mystery: false, revealed: false };
 let uciMoves = [];                                // the game so far, in UCI notation, for the engine
 let elapsed = { white: 0, black: 0 }, tickFrom = 0, running = false, paused = false, finished = false;
 let viewPly = null;                               // null = live position, else a ply to display
@@ -144,7 +148,8 @@ let gamePosition = 518;
 
 const colourToMove = () => (game.turn() === "w" ? "white" : "black");
 const isBot = (colour) => players[colour] !== "human";
-const playerName = (colour) => isBot(colour) ? `Bot · level ${players[colour]}` : "You";
+const botName = () => (opponent.mystery && !opponent.revealed ? "Mystery" : opponent.aggressive ? "Pedagog" : "Reference");
+const playerName = (colour) => isBot(colour) ? `${botName()} · level ${players[colour]}` : "You";
 
 function legalDests() {
   const dests = new Map();
@@ -287,7 +292,7 @@ function saveSession() {
     settings,
     game: running || finished ? {
       variant, position: gamePosition, startFen, moves: game.history().map((m) => m.san),
-      players, elapsed: liveElapsed(), paused, orientation: cg.state.orientation,
+      players, opponent, elapsed: liveElapsed(), paused, orientation: cg.state.orientation,
       viewPly, date: gameDate,
     } : null,
   };
@@ -316,6 +321,7 @@ function restoreSession() {
     if (state?.version !== 1 || !settings ||
         !["hvb", "bvb"].includes(settings.mode) ||
         !["white", "black", "random"].includes(settings.colour) ||
+        !(settings.opponent === undefined || OPPONENTS.includes(settings.opponent)) ||
         !["standard", "chess960"].includes(settings.variant) ||
         !["level", "level2"].every((id) => typeof settings[id] === "string" && integer(Number(settings[id]), 1, 10)) ||
         typeof settings.position !== "string" || !integer(Number(settings.position), 0, 959))
@@ -330,6 +336,7 @@ function restoreSession() {
           !Array.isArray(saved.moves) || !saved.moves.every((m) => typeof m === "string") ||
           !saved.players || !player(saved.players.white) || !player(saved.players.black) ||
           (saved.players.white === "human" && saved.players.black === "human") ||
+          !(saved.opponent === undefined || ["aggressive", "mystery", "revealed"].every((k) => typeof saved.opponent[k] === "boolean")) ||
           !saved.elapsed || !["white", "black"].every((c) => Number.isFinite(saved.elapsed[c]) && saved.elapsed[c] >= 0) ||
           typeof saved.paused !== "boolean" || !["white", "black"].includes(saved.orientation) ||
           !(saved.viewPly === null || integer(saved.viewPly, 0, saved.moves.length)) ||
@@ -344,11 +351,12 @@ function restoreSession() {
         moves.push(move.from + move.to + (move.promotion || ""));
       }
     }
-    for (const id of SETTING_IDS) $(id).value = settings[id];
+    for (const id of SETTING_IDS) if (settings[id] !== undefined) $(id).value = settings[id];
     if (!restored) return false;
     game = restored; uciMoves = moves;
     variant = saved.variant; startFen = saved.startFen; gamePosition = saved.position;
     players = saved.players; elapsed = saved.elapsed; gameDate = saved.date;
+    opponent = saved.opponent ?? { aggressive: true, mystery: false, revealed: false };
     paused = saved.paused; viewPly = saved.viewPly;
     finished = game.gameOver(); running = !finished; tickFrom = performance.now();
     cg.set({ orientation: saved.orientation });
@@ -367,6 +375,7 @@ function updateGameControls() {
   $("pause").textContent = paused ? "Resume" : "Pause";
   $("start-fen").classList.toggle("hidden", variant !== "chess960");
   $("start-fen").textContent = variant === "chess960" ? `Position ${gamePosition}: ${startFen}` : "";
+  refreshMystery();
 }
 
 /* ---- Playing moves */
@@ -402,7 +411,9 @@ async function scheduleBot() {
   }
   setStatus(`level ${level} is thinking`, true);
   try {
-    const uci = await engine.bestMove({ startFen, moves: uciMoves, level, chess960: variant === "chess960" });
+    const uci = await engine.bestMove({
+      startFen, moves: uciMoves, level, aggressive: opponent.aggressive, chess960: variant === "chess960",
+    });
     if (id !== gameId) return;                           // a new game was started meanwhile
     thinking = false;
     if (paused) return;
@@ -441,6 +452,8 @@ function newGame() {
   gameDate = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
   $("promotion").classList.add("hidden");
   const mode = $("mode").value, level = parseInt($("level").value), level2 = parseInt($("level2").value);
+  const mystery = $("opponent").value === "mystery";
+  opponent = { aggressive: mystery ? Math.random() < 0.5 : $("opponent").value === "pedagog", mystery, revealed: false };
   if (mode === "bvb") players = { white: level, black: level2 };
   else {
     let human = $("colour").value;
@@ -486,6 +499,44 @@ for (const id of SETTING_IDS) {
     saveSession();
   };
 }
+/* ---- Mystery games: rate the opponent's aggressiveness and guess which it was, then reveal.
+   Each verdict is kept in a local log so the guesses can be scored over many games. */
+function mysteryLog() {
+  try { return JSON.parse(localStorage.getItem(MYSTERY_LOG_KEY)) ?? []; } catch { return []; }
+}
+
+function refreshMystery() {
+  const show = opponent.mystery && (running || finished);
+  $("mystery").classList.toggle("hidden", !show);
+  for (const id of ["mystery-rating", "mystery-guess", "mystery-reveal"])
+    $(id).closest("label, .row").classList.toggle("hidden", opponent.revealed);
+  $("mystery-reveal").disabled = !$("mystery-rating").value || !$("mystery-guess").value;
+  const log = mysteryLog(), right = log.filter((v) => v.guess === v.actual).length;
+  const mean = (style) => {
+    const ratings = log.filter((v) => v.actual === style).map((v) => v.rating);
+    return ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : "–";
+  };
+  const verdict = opponent.revealed ? `It was ${botName()}. ` : "Rate the game, then reveal. ";
+  $("mystery-log").textContent = verdict + (log.length === 0 ? "" :
+    `${right} of ${log.length} guesses right; felt aggressive: Pedagog ${mean("pedagog")}, Reference ${mean("reference")}.`);
+}
+
+function revealMystery() {
+  const verdict = {
+    date: gameDate, levels: [players.white, players.black], variant, plies: game.history().length,
+    result: finished ? resultText() : "unfinished",
+    actual: opponent.aggressive ? "pedagog" : "reference",
+    guess: $("mystery-guess").value, rating: Number($("mystery-rating").value),
+  };
+  try { localStorage.setItem(MYSTERY_LOG_KEY, JSON.stringify([...mysteryLog(), verdict])); }
+  catch (e) { if (!(e instanceof DOMException)) throw e; storageError("save", e); }
+  opponent = { ...opponent, revealed: true };
+  $("mystery-rating").value = ""; $("mystery-guess").value = "";
+  refreshAll(); refreshMystery(); saveSession();
+}
+
+for (const id of ["mystery-rating", "mystery-guess"]) $(id).onchange = refreshMystery;
+$("mystery-reveal").onclick = revealMystery;
 $("random-position").onclick = () => { $("position").value = Math.floor(Math.random() * 960); saveSession(); };
 $("new-game").onclick = newGame;
 $("flip").onclick = () => { cg.toggleOrientation(); refreshBars(); saveSession(); };

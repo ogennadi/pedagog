@@ -68,6 +68,15 @@
         </label>
       </div>
       <div class="row">
+        <label>Opponent
+          <select id="opponent">
+            <option value="pedagog">Pedagog</option>
+            <option value="reference">Reference</option>
+            <option value="mystery">Mystery</option>
+          </select>
+        </label>
+      </div>
+      <div class="row">
         <label id="level-row">Bot level <output id="level-out">10</output>
           <input type="range" id="level" min="1" max="10" value="5">
         </label>
@@ -103,6 +112,32 @@
       <ol id="moves" class="moves"></ol>
       <div id="result" class="result"></div>
     </div>
+
+    <form id="mystery" class="mystery hidden" onsubmit="return false">
+      <div class="row">
+        <label>How aggressive did it feel?
+          <select id="mystery-rating">
+            <option value="">—</option>
+            <option value="1">1 · timid</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5 · reckless</option>
+          </select>
+        </label>
+        <label>Which was it?
+          <select id="mystery-guess">
+            <option value="">—</option>
+            <option value="pedagog">Pedagog</option>
+            <option value="reference">Reference</option>
+          </select>
+        </label>
+      </div>
+      <div class="row buttons">
+        <button type="button" id="mystery-reveal">Reveal</button>
+      </div>
+      <div id="mystery-log" class="mystery-log"></div>
+    </form>
 
     <div class="row buttons">
       <a id="lichess" class="button" target="_blank" rel="noopener">Open in Lichess</a>
