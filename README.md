@@ -83,6 +83,10 @@ game, guess which style it was (or say you don't know); the answer is then
 revealed and the verdict kept in a local log, so the style can be judged blind
 over many games.
 
+The gear at the top right opens the settings page: light or dark appearance, board
+colours, and any of 35 Lichess piece sets, shown side by side on one page. The
+single-file build keeps the default pieces.
+
 ## UCI options
 
 Send `uci` to list the engine's options, and configure them with

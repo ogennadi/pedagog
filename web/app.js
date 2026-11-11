@@ -3,6 +3,7 @@
 import { Chessground } from "chessground";
 import { Chess, GAME_VARIANT } from "cm-chess/src/Chess.js";
 import { BOOK } from "./book.js";
+import { BOARD_THEMES, loadPrefs, pieceCss, boardCss, applyCss, applyTheme } from "./prefs.js";
 
 const $ = (id) => document.getElementById(id);
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -563,6 +564,17 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 
+/* Display preferences from the settings page (config.html). The single-file build has no piece
+   files beside it, so it keeps chessground's built-in set and only takes the colours. */
+function applyPrefs() {
+  const prefs = loadPrefs();
+  applyTheme(prefs.theme);
+  applyCss("board-theme-css", boardCss(BOARD_THEMES.find((t) => t.name === prefs.board), "html"));
+  if (prefs.pieces !== "cburnett" && !globalThis.PEDAGOG_ENGINE_SOURCE)
+    applyCss("piece-set-css", pieceCss(prefs.pieces, "html .cg-wrap", "vendor/lichess-pieces"));
+}
+
+applyPrefs();
 restoreSession();
 refreshSettings();
 refreshAll();

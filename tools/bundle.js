@@ -57,6 +57,7 @@ let html = readFileSync(resolve(root, "web", "index.html"), "utf8");
 html = html.replace(/(src|href)="(icon-\d+\.png)"/g, (_, attribute, path) =>
   `${attribute}="data:image/png;base64,${readFileSync(resolve(root, "web", path)).toString("base64")}"`);
 html = html.replace(/<link rel="manifest"[^>]*>\s*/g, "");
+html = html.replace(/\s*<a id="settings-link"[^>]*>[^<]*<\/a>/, "");   // no settings page in this build
 html = html.replace(/<link rel="stylesheet"[^>]*>\s*/g, "");
 html = html.replace(/<script type="importmap">[\s\S]*?<\/script>\s*/, "");
 html = html.replace("</head>", `<style>\n${css}\n</style>\n</head>`);

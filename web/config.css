@@ -1,0 +1,12 @@
+/* Hidden settings page: every piece set side by side on one board colour scheme. */
+.config { display: block; max-width: 80rem; }
+.config .setup { margin-bottom: .75rem; }
+.sets { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: .75rem; }
+.set { background: var(--panel); border: 2px solid transparent; border-radius: .5rem; padding: .4rem; cursor: pointer; }
+.set:hover { border-color: var(--border); }
+.set.selected { border-color: var(--accent); }
+.set .preview { width: 100%; aspect-ratio: 1; }
+.set .preview .cg-wrap { width: 100%; height: 100%; }
+.set .caption { display: flex; justify-content: space-between; gap: .4rem; margin-top: .3rem; font-size: .85rem; }
+.set .licence { color: var(--muted); font-size: .75rem; text-align: right; }
+.nc { color: #c77d2e; font-weight: 600; }

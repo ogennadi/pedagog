@@ -2,7 +2,8 @@
    Requests go to the network first (so updates arrive when online) and fall back to the cache. */
 const CACHE = "pedagog-v4";
 const FILES = [
-  "./", "index.html", "engine.js", "app.js", "book.js", "app.css", "manifest.json",
+  "./", "index.html", "engine.js", "app.js", "prefs.js", "book.js", "app.css", "manifest.json",
+  "config.html", "config.js", "config.css",
   "icon-32.png", "icon-180.png", "icon-192.png", "icon-512.png",
   "vendor/chessground/chessground.min.js",
   "vendor/chessground/chessground.base.css",
