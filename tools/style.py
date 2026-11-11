@@ -3,6 +3,8 @@
     python tools/style.py [--stockfish PATH --depth 10] tools/out/some-match.pgn [more.pgn ...]
 
 For each player name found in the PGNs it reports, per 100 of that player's moves:
+  * aggression: 3 x sacrifices + checks, a single number for comparing styles (a
+    sacrifice is rarer than a check, and weighs about three times as much).
   * sacrificed: moves after which the mover's material balance (P=1, N=B=3, R=5, Q=9) is
     at least 2 pawns lower once the opponent has replied, and still that low a full move
     later, while the mover's own evaluation of its move (from the PGN comment) was no
@@ -138,6 +140,8 @@ def main():
         moves, games = max(1, st["moves"]), max(1, st["games"])
         kd = sum(dist[name]) / len(dist[name]) if dist[name] else float("nan")
         print(f"{name}: {st['games']} games, {st['moves']} moves")
+        print(f"  aggression:    {(300 * st['sacrificed'] + 100 * st['checks']) / moves:.1f}"
+              " (3 x sacrifices + checks, per 100 moves)")
         print(f"  sacrificed:    {100 * st['sacrificed'] / moves:.2f} per 100 moves"
               f" (blundered {100 * st['blundered'] / moves:.2f})")
         print(f"  checks given:  {100 * st['checks'] / moves:.2f} per 100 moves")

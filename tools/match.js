@@ -10,7 +10,8 @@ const defaultEngine = resolve(root, "pedagog.js");
 const book = resolve(here, "8moves_v3.epd");
 const help = `Usage: bun tools/match.js <A> <B> <even-games> [options]
 
-Players: L1..L10, L10@<depth>, prev:L1..L10, maia-1100|maia-1500|maia-1900
+Players: L1..L10 (Pedagog, aggressive style), R1..R10 (Pedagog, plain reference style,
+         Aggressive=false), L10@<depth>, prev:L1..L10, maia-1100|maia-1500|maia-1900
 Options:
   --engine PATH             Current Pedagog source (default: PEDAGOG_ENGINE or repo engine)
   --previous-engine PATH    Source for prev:<level> (default: PEDAGOG_PREVIOUS_ENGINE)
@@ -89,10 +90,11 @@ usedArtifacts.set(process.execPath, { kind: "Bun runtime", path: process.execPat
 function engineArgs(spec) {
   const previous = spec.startsWith("prev:");
   const playerSpec = previous ? spec.slice(5) : spec;
-  const levelMatch = /^L(\d+)(?:@(\d+))?$/.exec(playerSpec);
+  const levelMatch = /^([LR])(\d+)(?:@(\d+))?$/.exec(playerSpec);
   if (levelMatch) {
-    const level = Number(levelMatch[1]);
-    const depth = levelMatch[2] === undefined ? undefined : Number(levelMatch[2]);
+    const plain = levelMatch[1] === "R";
+    const level = Number(levelMatch[2]);
+    const depth = levelMatch[3] === undefined ? undefined : Number(levelMatch[3]);
     if (level < 1 || level > 10 || (depth !== undefined && (!Number.isSafeInteger(depth) || depth < 1))) {
       throw new Error(`invalid Pedagog level or depth: ${spec}`);
     }
@@ -104,8 +106,10 @@ function engineArgs(spec) {
     usedArtifacts.set(source, { kind: "Pedagog source", path: source });
     const limit = depth !== undefined ? ["tc=inf", `depth=${depth}`]
       : fixedTime !== undefined ? [`st=${fixedTime}`]
-        : [level === 10 ? "tc=10+0.1" : "tc=inf"];
-    return ["-engine", `name=${name}`, `cmd=${process.execPath}`, `arg=${source}`, "proto=uci", ...limit, `option.Skill_Level=${level}`];
+        : ["tc=inf"]; // every level is depth-limited
+    const style = plain ? ["option.Aggressive=false"] : [];
+    return ["-engine", `name=${name}`, `cmd=${process.execPath}`, `arg=${source}`, "proto=uci", ...limit,
+      `option.Skill_Level=${level}`, ...style];
   }
   if (/^maia-(1100|1500|1900)$/.test(spec)) {
     const weights = resolve(maiaDir, `${spec}.pb.gz`);
