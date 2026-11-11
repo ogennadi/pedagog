@@ -499,7 +499,7 @@ for (const id of SETTING_IDS) {
     saveSession();
   };
 }
-/* ---- Mystery games: rate the opponent's aggressiveness and guess which it was, then reveal.
+/* ---- Mystery games: guess which style it was (or say you don't know), then reveal.
    Each verdict is kept in a local log so the guesses can be scored over many games. */
 function mysteryLog() {
   try { return JSON.parse(localStorage.getItem(MYSTERY_LOG_KEY)) ?? []; } catch { return []; }
@@ -508,17 +508,16 @@ function mysteryLog() {
 function refreshMystery() {
   const show = opponent.mystery && (running || finished);
   $("mystery").classList.toggle("hidden", !show);
-  for (const id of ["mystery-rating", "mystery-guess", "mystery-reveal"])
+  for (const id of ["mystery-guess", "mystery-reveal"])
     $(id).closest("label, .row").classList.toggle("hidden", opponent.revealed);
-  $("mystery-reveal").disabled = !$("mystery-rating").value || !$("mystery-guess").value;
-  const log = mysteryLog(), right = log.filter((v) => v.guess === v.actual).length;
-  const mean = (style) => {
-    const ratings = log.filter((v) => v.actual === style).map((v) => v.rating);
-    return ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : "–";
-  };
-  const verdict = opponent.revealed ? `It was ${botName()}. ` : "Rate the game, then reveal. ";
+  $("mystery-reveal").disabled = !$("mystery-guess").value;
+  const log = mysteryLog();
+  const right = log.filter((v) => v.guess === v.actual).length;
+  const unsure = log.filter((v) => v.guess === "unknown").length;
+  const verdict = opponent.revealed ? `It was ${botName()}. ` : "Make your guess, then reveal. ";
   $("mystery-log").textContent = verdict + (log.length === 0 ? "" :
-    `${right} of ${log.length} guesses right; felt aggressive: Pedagog ${mean("pedagog")}, Reference ${mean("reference")}.`);
+    `${log.length} mystery game${log.length === 1 ? "" : "s"}: ${right} guessed right, ` +
+    `${log.length - right - unsure} wrong, ${unsure} don't know.`);
 }
 
 function revealMystery() {
@@ -526,16 +525,16 @@ function revealMystery() {
     date: gameDate, levels: [players.white, players.black], variant, plies: game.history().length,
     result: finished ? resultText() : "unfinished",
     actual: opponent.aggressive ? "pedagog" : "reference",
-    guess: $("mystery-guess").value, rating: Number($("mystery-rating").value),
+    guess: $("mystery-guess").value,
   };
   try { localStorage.setItem(MYSTERY_LOG_KEY, JSON.stringify([...mysteryLog(), verdict])); }
   catch (e) { if (!(e instanceof DOMException)) throw e; storageError("save", e); }
   opponent = { ...opponent, revealed: true };
-  $("mystery-rating").value = ""; $("mystery-guess").value = "";
+  $("mystery-guess").value = "";
   refreshAll(); refreshMystery(); saveSession();
 }
 
-for (const id of ["mystery-rating", "mystery-guess"]) $(id).onchange = refreshMystery;
+$("mystery-guess").onchange = refreshMystery;
 $("mystery-reveal").onclick = revealMystery;
 $("random-position").onclick = () => { $("position").value = Math.floor(Math.random() * 960); saveSession(); };
 $("new-game").onclick = newGame;

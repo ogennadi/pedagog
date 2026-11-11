@@ -1,6 +1,6 @@
-﻿"""Playing-style statistics per player, from cutechess PGNs.
+"""Playing-style statistics per player, from cutechess PGNs.
 
-    python tools/style.py [--stockfish PATH --depth 10] tools/out/some-match.pgn [more.pgn ...]
+    python tools/style.py [--stockfish PATH --depth 10] [--json out.json] tools/out/some-match.pgn [...]
 
 For each player name found in the PGNs it reports, per 100 of that player's moves:
   * aggression: 3 x sacrifices + checks, a single number for comparing styles (a
@@ -24,7 +24,7 @@ And per game or position:
   * the player's score, its decisive-game rate, and the average game length.
 Only moves in the PGN movetext count; the opening book moves are not in it.
 """
-import argparse, collections, re, sys
+import argparse, collections, json, re, sys
 import chess, chess.engine, chess.pgn
 
 VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}
@@ -74,6 +74,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stockfish", help="judge swings with this UCI engine instead of the PGN evaluations")
     ap.add_argument("--depth", type=int, default=10)
+    ap.add_argument("--json", help="also write the statistics per player to this file")
     ap.add_argument("files", nargs="+")
     a = ap.parse_args()
     judge = chess.engine.SimpleEngine.popen_uci(a.stockfish) if a.stockfish else None
@@ -136,9 +137,18 @@ def main():
                             cooldown = i + 4
     if judge:
         judge.quit()
+    summary = {}
     for name, st in sorted(s.items()):
         moves, games = max(1, st["moves"]), max(1, st["games"])
         kd = sum(dist[name]) / len(dist[name]) if dist[name] else float("nan")
+        summary[name] = {
+            "games": st["games"], "moves": st["moves"],
+            "aggression": round((300 * st["sacrificed"] + 100 * st["checks"]) / moves, 2),
+            "sacrificed": round(100 * st["sacrificed"] / moves, 2),
+            "blundered": round(100 * st["blundered"] / moves, 2),
+            "checks": round(100 * st["checks"] / moves, 2),
+            "king_distance": round(kd, 2) if dist[name] else None,
+        }
         print(f"{name}: {st['games']} games, {st['moves']} moves")
         print(f"  aggression:    {(300 * st['sacrificed'] + 100 * st['checks']) / moves:.1f}"
               " (3 x sacrifices + checks, per 100 moves)")
@@ -151,6 +161,9 @@ def main():
               f" ({'Stockfish' if judge else 'own evals'})")
         print(f"  score:         {100 * st['score'] / games:.1f}%, decisive {100 * st['decisive'] / games:.0f}%,"
               f" {st['plies'] / games / 2:.0f} moves/game")
+    if a.json:
+        with open(a.json, "w") as fh:
+            json.dump({"files": len(a.files), "players": summary}, fh, indent=2)
 
 
 if __name__ == "__main__":

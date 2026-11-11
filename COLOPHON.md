@@ -16,6 +16,145 @@ and 100,000 generated, including three complete versions of `pedagog.js`;
 Part II roughly 250,000 tokens of context and 90,000 generated. Call it
 half a million tokens in all.
 
+**Part III** (functional refactor, aggressive style, two ladders, Mystery mode)
+was written by **Claude Opus 5.5** (model id `claude-opus-5.5`), running as the
+GitHub Copilot CLI agent (version 1.0.96), from 2026-11-10 13:00 to about
+2026-11-11 03:00 US Central — most of it match time, well over 100,000 games.
+The harness does not expose token counts; the session was long enough to be
+summarised (compacted) along the way.
+
+## Part III — An aggressive style
+
+### What changed
+
+The engine was first refactored without changing its play: every function
+takes its inputs and returns its results (no shared mutable state), positions
+became immutable values made by copy/make, with a single summed 46-bit key, and
+time management kept a one-second clock reserve. Then the brief changed:
+make Pedagog *feel* aggressive — sacrifices, checks, pieces swarming the king —
+while staying as strong as Maia-1900 at the top level.
+
+The style is three numbers (section S2 of `pedagog.js`, applied in `evaluate()`
+and at the root of the search):
+
+| knob | aggressive | plain | what it does |
+|---|---|---|---|
+| `kingAttack` | 60 | 0 | middlegame bonus per square that a knight, bishop, rook or queen (queen ×2) stands closer to the enemy king |
+| `materialMg` | 250 ‰ | 1000 ‰ | middlegame material counts this share of its value, so giving it up for an attack costs less |
+| `checkBias` | 60 cp | 0 | at the root, a checking move counts this much better (mate scores excepted) |
+
+Both styles also gained a short **quiescence search** (captures only, MVV-LVA
+ordered, at most four plies past a leaf) and better move ordering (the previous
+iteration's best move first, then MVV-LVA captures). Without quiescence the
+aggressive style's sacrifices are hopes rather than calculations; with it, a
+sacrifice that loses to a simple recapture is seen as such.
+
+### How aggression was measured
+
+`tools/style.py` reads cutechess PGNs and reports, per 100 of a player's own
+moves: **knowing sacrifices** (its material balance drops by ≥ 2 pawns and
+stays down a move later, while its own evaluation of the move was ≥ −0.5),
+**blunders** (the same drop when its evaluation already said it was losing),
+**checks**, middlegame **king distance** of its pieces, material imbalance and
+evaluation swings. The single **aggression score** is 3 × sacrifices +
+checks. As a sanity check the metric ranks full-strength Patricia 5.1 (a
+deliberately aggressive engine; checks 14.3, sacrifices 2.5) above
+full-strength Stockfish 19 (7.6, 1.7). Engines weakened to ~1900 (Stockfish
+`UCI_Elo` 1500, Patricia skill 7) look *less* aggressive, not more: their
+weakening adds blunders, not attacks.
+
+### What the knobs cost
+
+At level 10, 10+0.1, 200 games each against Maia-1900 (± ≈ 45), all with
+quiescence: `kingAttack`/`materialMg` 40/300 ≈ +80, 60/250 ≈ 0, 90/200 ≈ −90,
+120/150 ≈ −130 — a cliff past 60/250, while knowing sacrifices rose from
+2.4 to 5.3 per 100 moves (Maia: ~2.1). A root check bonus of 0 / 30 / 60 cp
+cost about 7 Elo per step (−40, −47, −54) and raised the aggression score
+19.1 / 21.5 / 23.2. Contempt and three further style terms (development, early
+queen, space) were tried and dropped as not worth their lines.
+
+At equal search settings the plain style beats the aggressive one by about
+**210 Elo** head-to-head at every level: that is the price of the style. So each
+style has its own ladder, and an aggressive level searches a little deeper
+and errs less than the plain level with the same number.
+
+### Search speed
+
+Quiescence made the aggressive search 8–30× more expensive (87 % of its nodes
+were quiescence nodes). Two simple changes paid for it: trying the previous
+best move and ranking captures in the main search cut nodes about 2.7×, and
+capping quiescence at four capture plies cut depth 5 from 2.9 s to 0.37 s per
+move. The cap costs little at a fixed depth (−42 ± 66 against no cap; a cap
+of two cost −104 ± 65), and the depth it buys is worth far more (capped depth
+5 beat uncapped depth 4 by +235 ± 54).
+
+### Two depth-bounded ladders
+
+Level 10 no longer plays on the clock: every level is a depth (with an extra
+ply on a hash-chosen share of positions), plus blunders and reduced vision
+below the top, so a level is the same opponent on any machine and under any
+load. The two ladders were tuned over five rounds of ~15,000 games each, then
+measured once more on the committed engine (round 10, below).
+
+Round 10: 61 pairings of 300 games (18,300 games) — every level against the level below in its own ladder, against the other style's level of the same number, and against Maia-1100 (all levels), Maia-1500 (8–10) and Maia-1900 (6–10); level 2 of each style also against level 1. Depth-bounded on both sides, so the matches are deterministic: rerunning a pairing replays the same games. `tools/elo.js` fits one rating to everything, anchored on Maia-1900 = 1755; the inputs are archived in `docs/calibration-baseline/round-10-pgns.zip`. Depth is *plies + share of positions searched one ply deeper*; vision is per 1024. Aggression is `tools/style.py`'s score (3 × knowing sacrifices + checks per 100 moves) in the games between the two styles.
+
+| level | target | Pedagog depth | blunder | vision | **Elo** | aggression | Reference depth | blunder | vision | **Elo** | aggression |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2 | 945 | 1 + 20 % | 720 cp @ 6.8 % | 640 | **990** | 33.6 | 1 + 0 % | 800 cp @ 7.6 % | 560 | **940** | 13.2 |
+| 3 | 1046 | 1 + 55 % | 655 cp @ 6.2 % | 705 | **1077** | 34.6 | 1 + 0 % | 700 cp @ 6.6 % | 670 | **1038** | 13.8 |
+| 4 | 1148 | 2 + 0.5 % | 575 cp @ 5.2 % | 785 | **1170** | 39.3 | 1 + 40 % | 660 cp @ 6.1 % | 710 | **1168** | 17.2 |
+| 5 | 1249 | 2 + 9 % | 475 cp @ 4.4 % | 868 | **1287** | 36.9 | 1 + 78 % | 615 cp @ 5.7 % | 745 | **1225** | 18.5 |
+| 6 | 1350 | 2 + 30 % | 425 cp @ 3.7 % | 925 | **1377** | 32.7 | 2 + 0.5 % | 555 cp @ 5.1 % | 805 | **1329** | 18.2 |
+| 7 | 1451 | 2 + 57 % | 393 cp @ 2.8 % | 956 | **1474** | 31.5 | 2 + 15 % | 480 cp @ 4.3 % | 875 | **1430** | 14.7 |
+| 8 | 1553 | 2 + 95 % | 355 cp @ 2.2 % | 975 | **1557** | 33.5 | 2 + 36 % | 415 cp @ 3.5 % | 930 | **1547** | 12.2 |
+| 9 | 1654 | 3 + 64 % | 260 cp @ 1.4 % | 996 | **1649** | 34.1 | 2 + 69 % | 380 cp @ 2.6 % | 962 | **1666** | 10.9 |
+| 10 | 1755 | 4 + 42 % | — | full | **1771** | 34.6 | 3 + 6 % | 330 cp @ 1.9 % | 985 | **1795** | 10.3 |
+
+Both ladders are within 45 Elo of every target; fitted gaps average 98 (Pedagog) and 107 (Reference), and level 10 is above Maia-1900 in both (head-to-head +4 ± 34 and +16 ± 35). The bottom is the least certain: levels 2–3 are anchored only through Maia-1100, 500 Elo above them, and through the random mover, which Reference level 2 (one ply, no mate-in-one net) only beats about half the time — so level 1's fitted rating (656 here, 173 in round 9) says more about that pairing than about level 1. Across the ladder Pedagog gives about 3–5× as many checks (19–25 per 100 moves against 5–7), knowingly sacrifices 1.2–2.3× as often (3.2–5.2 against 1.6–4.2), and keeps its pieces about one square closer to the enemy king (5.1–5.3 against 6.0–6.1).
+
+![skill curve](docs/skill-curve.png)
+
+![aggression per level](docs/style.png)
+
+### Blind testing the feel: Mystery mode
+
+A label saying "aggressive" makes every blunder look like a sacrifice. The web
+app therefore offers **Mystery**: a hidden coin flip between Pedagog and the
+Reference at the chosen level. After the game the player guesses which it
+was, or says they don't know; only then is the answer revealed. Verdicts are
+kept in local storage with running totals (right, wrong, don't know). A dozen
+or more mystery games tell whether the
+style is felt or imagined; the two opponents are equally strong by
+construction, so winning or losing is no clue.
+
+### The Part III brief
+
+Requests that shaped this part, verbatim (a selection; the earliest requests
+of the session are not preserved word for word):
+
+> make note in all repos to never mutate incoming variables
+
+> dont touch docs yet since we're still designing "aggressiveness" I want to focus more on sacrifice and tropism and maybe not contempt
+
+> we dont necessarily need more swings (although that might be nice). I wanna see sacs, space-taking, early queen and piece development.
+
+> Increase aggressiveness drastically, I want to feel the style within one game
+
+> I'm suggestible so simply a README saying aggressive might make me see all blunders as aggressive.
+> 1. Protocol for testin aggro feeling
+> 2. Test that the engine, when playing on the app, isnt stronger than in automated tests
+
+> Can this aggro be ported to lower levels of pedagog?
+
+> 1. Improve aggro as much as possible without sacrificing readability/simplicity. UPdate style checker to assess this if necessary
+> 2. Add UI so we can select pedagog, reference engine, or mystery. But still allow selecting the 10 strength levels. This may require finding equivalent levels for the reference engine.
+
+Decisions along the way: the reference is Pedagog itself with
+`Aggressive=false`; aggression applies at every level, with a ladder per
+style; level 10 must stay at least as strong as Maia-1900; the top was lowered
+to Maia-1900's 1755 with levels about 100 Elo apart; level 10 became
+depth-bounded; quiescence was given to both styles so that the blind test
+compares style, not search.
 ## Part II — Skill levels
 
 ### Historical measurements of the search ideas
@@ -66,9 +205,16 @@ machine; levels 2–9 are depth-bounded and ignore the clock entirely. Level 1
 plays a random legal move but always mates in one; **no other level has a
 mate-in-one safety net** — a weak level can miss or allow one, like a weak
 player. At full strength nothing is randomised, so `Skill_Seed` has no effect
-there (as in Gaia; variety comes from the opening book).
+there (as in Gaia; variety comes from the opening book). *(Part III changed
+this: level 10 is now depth-bounded and weakened like the others, and
+`Skill_Seed` affects every level from 2 up; see Part III.)*
 
-### The ladder, as measured
+### The ladder, as measured (round 9; superseded in Part III)
+
+This is the Part II ladder: one style, level 10 at full strength on the
+clock. Part III replaced it with two depth-bounded ladders (see
+[Part III](#part-iii--an-aggressive-style)); the round-9 archive and this
+table are kept as the historical record.
 
 Method: every level played 300 games against the level below and 300 against
 each of Maia-1100 and Maia-1900 (some also Maia-1500), level 10 at 10+0.1,
@@ -103,9 +249,8 @@ blind spots exaggerate their difference — which is why the ladder was tuned
 on the joint fit. The top is structurally tight: pure depth 5 is already full
 strength here, so levels 7–10 have to share about 340 Elo. (The ladder was
 tuned with Maia-1900 anchored at its nominal 1900; re-anchoring to 1755 only
-shifts every rating by −145 and changes no gap.)
-
-![skill curve](docs/skill-curve.png)
+shifts every rating by −145 and changes no gap.) The round-9 figure was replaced
+by Part III's; the round-9 ratings remain in the table above and in the archive.
 
 ### Blunder rate
 
@@ -124,6 +269,8 @@ moves are judged, and book moves are not in the record.
 
 Even full strength blunders on 6.7 % of its moves by this yardstick: that is
 the horizon effect of a search without quiescence, a possible future addition.
+(Measured on the round-9 ladder. Part III added a quiescence search and a new
+ladder; these rates have not been re-measured.)
 
 ### The web app
 
@@ -145,6 +292,9 @@ Workers from `file://`, so this build inlines everything and starts the
 engine from a Blob URL, which they do allow — double-click it and it runs
 with the engine off the main thread. Bot time is fixed: levels 1–9 are
 depth-bounded and answer in milliseconds, level 10 thinks for one second.
+*(Since Part III every level is depth-bounded — the app sends `go depth 100`
+and the level decides — and the app also offers the opponent picker and the
+Mystery mode described there.)*
 Settings and the current or completed game are saved in browser local storage.
 Reopening the same app restores the full move history, PGN, elapsed times,
 board orientation, and pause state; an unpaused game resumes automatically.
@@ -164,6 +314,8 @@ standalone `pedagog.js` engine is independent of the web dependencies. See
 configuration, seeded runs, fixed `st=1`, and previous-engine comparisons;
 also `L10@6` for a fixed depth without a clock),
 `tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
+`tools/style.py` (style statistics, Part III; `R1`..`R10` in `match.js` are
+the plain style),
 `tools/plot.py` (the figure), `tools/serve.js` (static server with the
 cross-origin-isolation headers), `tools/bundle.js` (the single-file app).
 Match PGNs and metadata land in `tools/out/` (ignored). Each run has an
@@ -273,7 +425,9 @@ Transposition table, principal variation search, aspiration windows, null
 move pruning, reverse futility pruning, late move reductions, killer and
 history heuristics, check extension, quiescence search, delta pruning,
 MVV-LVA capture ranking and incremental evaluation. All of them were written,
-tested and then removed; the table above is what they cost. The evaluation is
+tested and then removed; the table above is what they cost. (Part III brought
+back a capped quiescence search and MVV-LVA ordering, which the aggressive
+style needs to calculate its sacrifices.) The evaluation is
 formula-based piece-square tables — the brief said to try a naive PSQT first
 and PeSTO only if the engine turned out too weak, and it did not.
 
@@ -282,8 +436,9 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `pedagog.js` — the engine, one file, read top to bottom.
 - `index.html`, `web/`, `sw.js` — the web app (Part II); `bun run web` serves it.
 - `pedagog-app.html` — the same app as one self-contained file (`bun run bundle`); open it directly.
-- `tools/` — match runner, Elo fit, blunder judge, plot, server, bundler.
-- `docs/` — `skill-curve.png`, `skill-curve.json`, `blunders.json`.
+- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, bundler.
+- `docs/` — `skill-curve.png`, `skill-curve.json` (Part III ladders), `blunders.json` (round 9);
+  `calibration-baseline/` holds the PGNs behind each published fit.
 - `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`, `bun run bundle`, `bun run match`, `bun run elo`.
 
 The original development suite used an isolated VM harness and frozen

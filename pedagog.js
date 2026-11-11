@@ -16,14 +16,17 @@
    main thread handles input and interruption, not parallel search.
 
    It is deliberately a base engine: iterative deepening, alpha-beta
-   and captures-first move ordering, with a plain piece-square
-   evaluation, and nothing else. Measured against
-   Maia-1900 the engine is about 140 Elo stronger than that
-   network, which puts its full strength around 1900 on the Lichess
-   classical scale. Below full strength, Skill_Level weakens it the
-   way Gaia does: it looks less far ahead, misjudges some positions
-   on purpose, and overlooks some moves entirely (see COLOPHON.md
-   for the measured ladder).
+   with simple move ordering and a short quiescence search, and a
+   plain piece-square evaluation, and nothing else. It has two
+   playing styles (the Aggressive option): an attacking one, on by
+   default, that gathers its pieces around the enemy king, gives up
+   material readily and likes to give check; and a plain reference
+   style. Skill_Level picks one of ten levels, from a random mover to
+   about Maia-1900 (1755 on the Lichess classical scale), weakened
+   the way Gaia does it: the engine looks less far ahead, misjudges
+   some positions on purpose, and overlooks some moves entirely. Each
+   style has its own ladder, so a level is equally strong in either
+   (see COLOPHON.md for the measurements).
 
    HOW TO READ IT
    Every function names what it needs in its parameters and hands
@@ -42,8 +45,8 @@
    -----------------
    S0  Constants           Pieces, squares, move encoding
    S1  Search              Iterative deepening, alpha-beta, ordering
-   S2  Skill Levels        Depth ceiling, blunders, vision
-   S3  Evaluation          A naive piece-square evaluation
+   S2  Skill Levels        Styles, depth ceiling, blunders, vision
+   S3  Evaluation          A naive piece-square evaluation, styled
    S4  Chess Rules         Position, copy/make, draws, moves, attacks
    S5  Zobrist Hashing     Position keys for repetition detection
    S6  UCI                 Sessions, options, bench, perft, I/O
@@ -123,7 +126,7 @@ const now = () => performance.now();
 
    The search answers one question: which move is best? It looks
    ahead a fixed number of plies with negamax alpha-beta, trying
-   captures first, and asks the static evaluation about the
+   the previous best move and then captures first, and asks the static evaluation about the
    positions at the leaves, after a short quiescence search has
    played out the captures pending there (a leaf in the middle of an
    exchange is otherwise judged as if the exchange were over, the
@@ -350,8 +353,9 @@ function limitsFor(go, side, level) {
    ================================================================
 
    Deliberately weakened play, for opponents meant to be beatable,
-   after Gaia (jromang/gaiachess, src/skill.rs). At SKILL_MAX only the
-   depth knob below is left; blunders and vision are inert.
+   after Gaia (jromang/gaiachess, src/skill.rs). Every level, SKILL_MAX
+   included, is weakened this way: the top level is meant to match
+   Maia-1900, and the full search would be far stronger.
 
    Searching less far is not enough on its own: a shallow but
    otherwise flawless player is dull, never careless. So a level
@@ -380,8 +384,8 @@ function limitsFor(go, side, level) {
    the same position the same way every time: stable blind spots, not
    a tremor. Level 1 is apart: it plays a random legal move, but
    always mates in one when it can. Levels 2..SKILL_MAX come from
-   the LADDER below; their ratings were measured against Maia and
-   are recorded in COLOPHON.md.
+   the style's ladder below (LADDER or AGGRESSIVE_LADDER); their
+   ratings were measured against Maia and are recorded in COLOPHON.md.
 
    A skill is a frozen value made by skillFor(level, seed, aggressive); the
    functions below take it as an argument.
@@ -414,15 +418,15 @@ const rung = (depth, deeperPermille, blunderWindow, blunderPermille, vision) =>
 const LADDER = [
   //   depth  deeper  blunder  b/1000  vision           target  measured
   null,                                          //  1    ~170
-  rung(1,       0,     800,     76,     560),    //  2     945     ~940
-  rung(1,       0,     700,     66,     670),    //  3    1046     1035
-  rung(1,     400,     660,     61,     710),    //  4    1148     1164
-  rung(1,     780,     615,     57,     745),    //  5    1249     1223
-  rung(2,       5,     555,     51,     805),    //  6    1350     1328
-  rung(2,     150,     480,     43,     875),    //  7    1451     1429
+  rung(1,       0,     800,     76,     560),    //  2     945      940
+  rung(1,       0,     700,     66,     670),    //  3    1046     1038
+  rung(1,     400,     660,     61,     710),    //  4    1148     1168
+  rung(1,     780,     615,     57,     745),    //  5    1249     1225
+  rung(2,       5,     555,     51,     805),    //  6    1350     1329
+  rung(2,     150,     480,     43,     875),    //  7    1451     1430
   rung(2,     360,     415,     35,     930),    //  8    1553     1547
-  rung(2,     690,     380,     26,     962),    //  9    1654     1668
-  rung(3,      60,     330,     19,     985),    // 10    1755     1790
+  rung(2,     690,     380,     26,     962),    //  9    1654     1666
+  rung(3,      60,     330,     19,     985),    // 10    1755     1795
 ];
 
 /* The aggressive style's ladder (UCI option Aggressive on, the default),
@@ -432,15 +436,15 @@ const LADDER = [
 const AGGRESSIVE_LADDER = [
   //   depth  deeper  blunder  b/1000  vision           target  measured
   null,                                          //  1    ~170
-  rung(1,     200,     720,     68,     640),    //  2     945      958
-  rung(1,     550,     655,     62,     705),    //  3    1046     1064
-  rung(2,       5,     575,     52,     785),    //  4    1148     1164
-  rung(2,      90,     475,     44,     868),    //  5    1249     1284
-  rung(2,     300,     425,     37,     925),    //  6    1350     1376
+  rung(1,     200,     720,     68,     640),    //  2     945      990
+  rung(1,     550,     655,     62,     705),    //  3    1046     1077
+  rung(2,       5,     575,     52,     785),    //  4    1148     1170
+  rung(2,      90,     475,     44,     868),    //  5    1249     1287
+  rung(2,     300,     425,     37,     925),    //  6    1350     1377
   rung(2,     570,     393,     28,     956),    //  7    1451     1474
-  rung(2,     950,     355,     22,     975),    //  8    1553     1559
-  rung(3,     640,     260,     14,     996),    //  9    1654     1666
-  rung(4,     420,       0,      0,    FULL_VISION),   // 10  1755     1750
+  rung(2,     950,     355,     22,     975),    //  8    1553     1557
+  rung(3,     640,     260,     14,     996),    //  9    1654     1649
+  rung(4,     420,       0,      0,    FULL_VISION),   // 10  1755     1771
 ];
 
 /* The two playing styles. The aggressive one is eager to attack:

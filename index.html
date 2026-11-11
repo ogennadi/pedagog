@@ -115,21 +115,12 @@
 
     <form id="mystery" class="mystery hidden" onsubmit="return false">
       <div class="row">
-        <label>How aggressive did it feel?
-          <select id="mystery-rating">
-            <option value="">—</option>
-            <option value="1">1 · timid</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-            <option value="5">5 · reckless</option>
-          </select>
-        </label>
-        <label>Which was it?
+        <label>Who do you think it was?
           <select id="mystery-guess">
             <option value="">—</option>
-            <option value="pedagog">Pedagog</option>
-            <option value="reference">Reference</option>
+            <option value="pedagog">Pedagog (aggressive)</option>
+            <option value="reference">Reference (plain)</option>
+            <option value="unknown">I don't know</option>
           </select>
         </label>
       </div>
@@ -145,10 +136,13 @@
     </div>
 
     <p class="about">
-      Pedagog is a single-file pedagogical chess engine. Levels are calibrated against the
-      Maia bots and read as Lichess classical ratings: level 2 ≈ 950, level 10 (full
-      strength) ≈ 1900; level 1 plays random moves. In standard chess the bots open from a
-      small book of about a hundred lines, a quarter of them offbeat. Click a move, or use the
+      Pedagog is a single-file pedagogical chess engine with an attacking style: its pieces
+      crowd your king and it gives up material for the attack. Reference plays the same levels
+      in a plain style; Mystery picks one of the two in secret, for a blind test. Levels are
+      calibrated against the Maia bots and read as Lichess classical ratings: level 2 ≈ 945,
+      level 10 ≈ 1755 (Maia-1900); level 1 plays random moves. In standard chess the bots open
+      from a small book of about a hundred lines, a quarter of them offbeat.
+      Click a move, or use the
       ← → keys, to step through the game.
       Board by <a href="https://github.com/lichess-org/chessground">chessground</a> (GPL-3),
       rules by <a href="https://github.com/shaack/cm-chess">cm-chess</a> (MIT).

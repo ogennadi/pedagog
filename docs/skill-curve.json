@@ -6,178 +6,313 @@
   "ratings": [
     {
       "player": "L1",
-      "elo": 173,
-      "lo": -11,
-      "hi": 340,
-      "games": 300
+      "elo": 656,
+      "lo": 607,
+      "hi": 710,
+      "games": 600
     },
     {
       "player": "L2",
-      "elo": 945,
-      "lo": 890,
-      "hi": 993,
+      "elo": 990,
+      "lo": 946,
+      "hi": 1034,
       "games": 1200
     },
     {
       "player": "L3",
-      "elo": 1072,
-      "lo": 1028,
+      "elo": 1077,
+      "lo": 1041,
       "hi": 1111,
       "games": 1200
     },
     {
       "player": "L4",
-      "elo": 1195,
-      "lo": 1162,
-      "hi": 1224,
-      "games": 1500
+      "elo": 1170,
+      "lo": 1138,
+      "hi": 1200,
+      "games": 1200
     },
     {
       "player": "L5",
-      "elo": 1309,
-      "lo": 1278,
-      "hi": 1338,
-      "games": 1500
+      "elo": 1287,
+      "lo": 1261,
+      "hi": 1318,
+      "games": 1200
     },
     {
       "player": "L6",
-      "elo": 1417,
-      "lo": 1382,
-      "hi": 1439,
+      "elo": 1377,
+      "lo": 1351,
+      "hi": 1402,
       "games": 1500
     },
     {
       "player": "L7",
-      "elo": 1553,
-      "lo": 1529,
-      "hi": 1576,
-      "games": 1200
-    },
-    {
-      "player": "L8",
-      "elo": 1656,
-      "lo": 1636,
-      "hi": 1680,
+      "elo": 1474,
+      "lo": 1452,
+      "hi": 1491,
       "games": 1500
     },
     {
+      "player": "L8",
+      "elo": 1557,
+      "lo": 1535,
+      "hi": 1576,
+      "games": 1800
+    },
+    {
       "player": "L9",
-      "elo": 1789,
-      "lo": 1762,
-      "hi": 1813,
-      "games": 1200
+      "elo": 1649,
+      "lo": 1630,
+      "hi": 1669,
+      "games": 1800
     },
     {
       "player": "L10",
-      "elo": 1894,
-      "lo": 1858,
-      "hi": 1921,
-      "games": 500
+      "elo": 1771,
+      "lo": 1751,
+      "hi": 1791,
+      "games": 1500
+    },
+    {
+      "player": "R2",
+      "elo": 940,
+      "lo": 896,
+      "hi": 987,
+      "games": 1200
+    },
+    {
+      "player": "R3",
+      "elo": 1038,
+      "lo": 996,
+      "hi": 1078,
+      "games": 1200
+    },
+    {
+      "player": "R4",
+      "elo": 1168,
+      "lo": 1138,
+      "hi": 1199,
+      "games": 1200
+    },
+    {
+      "player": "R5",
+      "elo": 1225,
+      "lo": 1192,
+      "hi": 1254,
+      "games": 1200
+    },
+    {
+      "player": "R6",
+      "elo": 1329,
+      "lo": 1304,
+      "hi": 1354,
+      "games": 1500
+    },
+    {
+      "player": "R7",
+      "elo": 1430,
+      "lo": 1407,
+      "hi": 1450,
+      "games": 1500
+    },
+    {
+      "player": "R8",
+      "elo": 1547,
+      "lo": 1525,
+      "hi": 1564,
+      "games": 1800
+    },
+    {
+      "player": "R9",
+      "elo": 1666,
+      "lo": 1647,
+      "hi": 1684,
+      "games": 1800
+    },
+    {
+      "player": "R10",
+      "elo": 1795,
+      "lo": 1770,
+      "hi": 1815,
+      "games": 1500
     },
     {
       "player": "maia-1100",
-      "elo": 1538,
-      "lo": 1510,
-      "hi": 1561,
-      "games": 2400
+      "elo": 1564,
+      "lo": 1545,
+      "hi": 1581,
+      "games": 5400
     },
     {
       "player": "maia-1500",
-      "elo": 1670,
-      "lo": 1634,
-      "hi": 1695,
-      "games": 1200
+      "elo": 1685,
+      "lo": 1661,
+      "hi": 1705,
+      "games": 1800
     },
     {
       "player": "maia-1900",
       "elo": 1755,
       "lo": 1755,
       "hi": 1755,
-      "games": 2600
+      "games": 3000
     }
   ],
   "gaps": [
     {
       "from": "L1",
       "to": "L2",
-      "fitted": 771,
-      "lo": 606,
-      "hi": 920,
-      "direct": 771,
+      "fitted": 334,
+      "lo": 307,
+      "hi": 363,
+      "direct": 585,
       "h2hGames": 300
     },
     {
       "from": "L2",
       "to": "L3",
-      "fitted": 128,
-      "lo": 98,
-      "hi": 164,
-      "direct": 151,
+      "fitted": 87,
+      "lo": 56,
+      "hi": 117,
+      "direct": 174,
       "h2hGames": 300
     },
     {
       "from": "L3",
       "to": "L4",
-      "fitted": 122,
-      "lo": 94,
-      "hi": 159,
-      "direct": 167,
+      "fitted": 93,
+      "lo": 66,
+      "hi": 125,
+      "direct": 189,
       "h2hGames": 300
     },
     {
       "from": "L4",
       "to": "L5",
-      "fitted": 115,
-      "lo": 80,
-      "hi": 142,
-      "direct": 173,
+      "fitted": 117,
+      "lo": 95,
+      "hi": 145,
+      "direct": 235,
       "h2hGames": 300
     },
     {
       "from": "L5",
       "to": "L6",
-      "fitted": 108,
-      "lo": 80,
-      "hi": 137,
-      "direct": 207,
+      "fitted": 90,
+      "lo": 65,
+      "hi": 118,
+      "direct": 189,
       "h2hGames": 300
     },
     {
       "from": "L6",
       "to": "L7",
-      "fitted": 136,
-      "lo": 115,
-      "hi": 169,
-      "direct": 290,
+      "fitted": 97,
+      "lo": 74,
+      "hi": 120,
+      "direct": 176,
       "h2hGames": 300
     },
     {
       "from": "L7",
       "to": "L8",
-      "fitted": 103,
-      "lo": 80,
-      "hi": 127,
-      "direct": 241,
+      "fitted": 83,
+      "lo": 61,
+      "hi": 105,
+      "direct": 177,
       "h2hGames": 300
     },
     {
       "from": "L8",
       "to": "L9",
-      "fitted": 133,
-      "lo": 107,
-      "hi": 158,
-      "direct": 228,
+      "fitted": 93,
+      "lo": 73,
+      "hi": 116,
+      "direct": 210,
       "h2hGames": 300
     },
     {
       "from": "L9",
       "to": "L10",
-      "fitted": 105,
-      "lo": 81,
-      "hi": 135,
-      "direct": 119,
+      "fitted": 122,
+      "lo": 100,
+      "hi": 142,
+      "direct": 215,
+      "h2hGames": 300
+    },
+    {
+      "from": "R2",
+      "to": "R3",
+      "fitted": 98,
+      "lo": 65,
+      "hi": 139,
+      "direct": 106,
+      "h2hGames": 300
+    },
+    {
+      "from": "R3",
+      "to": "R4",
+      "fitted": 130,
+      "lo": 100,
+      "hi": 163,
+      "direct": 280,
+      "h2hGames": 300
+    },
+    {
+      "from": "R4",
+      "to": "R5",
+      "fitted": 57,
+      "lo": 24,
+      "hi": 85,
+      "direct": 197,
+      "h2hGames": 300
+    },
+    {
+      "from": "R5",
+      "to": "R6",
+      "fitted": 104,
+      "lo": 77,
+      "hi": 131,
+      "direct": 222,
+      "h2hGames": 300
+    },
+    {
+      "from": "R6",
+      "to": "R7",
+      "fitted": 101,
+      "lo": 79,
+      "hi": 124,
+      "direct": 167,
+      "h2hGames": 300
+    },
+    {
+      "from": "R7",
+      "to": "R8",
+      "fitted": 117,
+      "lo": 98,
+      "hi": 140,
+      "direct": 188,
+      "h2hGames": 300
+    },
+    {
+      "from": "R8",
+      "to": "R9",
+      "fitted": 119,
+      "lo": 103,
+      "hi": 140,
+      "direct": 213,
+      "h2hGames": 300
+    },
+    {
+      "from": "R9",
+      "to": "R10",
+      "fitted": 129,
+      "lo": 110,
+      "hi": 148,
+      "direct": 217,
       "h2hGames": 300
     }
   ],
-  "games": 8900
+  "games": 18300
 }

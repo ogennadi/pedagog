@@ -40,9 +40,10 @@ for (const f of files) {
 const players = [...new Set(games.flatMap((g) => [g[0], g[1]]))].sort(sortPlayers);
 if (!players.includes(anchorName)) { console.error(`anchor ${anchorName} not found among`, players); process.exit(1); }
 
+// Pedagog levels first: the aggressive ladder (L1..L10), then the plain one (R1..R10).
 function sortPlayers(a, b) {
-  const la = /^L(\d+)$/.exec(a), lb = /^L(\d+)$/.exec(b);
-  if (la && lb) return parseInt(la[1]) - parseInt(lb[1]);
+  const la = /^([LR])(\d+)$/.exec(a), lb = /^([LR])(\d+)$/.exec(b);
+  if (la && lb) return la[1].localeCompare(lb[1]) || parseInt(la[2]) - parseInt(lb[2]);
   if (la) return -1; if (lb) return 1;
   return a.localeCompare(b);
 }
@@ -88,21 +89,23 @@ const rows = players.map((p, i) => ({ player: p, elo: Math.round(R[i]), lo: Math
 console.log("player        elo   95% interval   games");
 for (const r of rows) console.log(`${r.player.padEnd(12)} ${String(r.elo).padStart(5)}   [${r.lo}, ${r.hi}]`.padEnd(38) + String(r.games).padStart(6));
 
-// Adjacent levels: difference from the joint fit, and from head-to-head games alone.
-const levels = rows.filter((r) => /^L\d+$/.test(r.player));
+// Adjacent levels of each ladder: difference from the joint fit, and from head-to-head games alone.
 const gaps = [];
-for (let i = 1; i < levels.length; i++) {
-  const a = levels[i].player, b = levels[i - 1].player;
-  const h2h = games.filter((g) => (g[0] === a && g[1] === b) || (g[0] === b && g[1] === a));
-  let direct = null;
-  if (h2h.length) {
-    const score = h2h.reduce((s, g) => s + (g[0] === a ? g[2] : 1 - g[2]), 0) / h2h.length;
-    const p = Math.min(Math.max(score, 0.005), 0.995);
-    direct = Math.round(-400 * Math.log10(1 / p - 1));
+for (const ladder of ["L", "R"]) {
+  const levels = rows.filter((r) => new RegExp(`^${ladder}\\d+$`).test(r.player));
+  for (let i = 1; i < levels.length; i++) {
+    const a = levels[i].player, b = levels[i - 1].player;
+    const h2h = games.filter((g) => (g[0] === a && g[1] === b) || (g[0] === b && g[1] === a));
+    let direct = null;
+    if (h2h.length) {
+      const score = h2h.reduce((s, g) => s + (g[0] === a ? g[2] : 1 - g[2]), 0) / h2h.length;
+      const p = Math.min(Math.max(score, 0.005), 0.995);
+      direct = Math.round(-400 * Math.log10(1 / p - 1));
+    }
+    const iA = players.indexOf(a), iB = players.indexOf(b);
+    const diffs = boots[iA].map((r, k) => r - boots[iB][k]);
+    gaps.push({ from: b, to: a, fitted: Math.round(R[iA] - R[iB]), lo: Math.round(ci(diffs)[0]), hi: Math.round(ci(diffs)[1]), direct, h2hGames: h2h.length });
   }
-  const iA = players.indexOf(a), iB = players.indexOf(b);
-  const diffs = boots[iA].map((r, k) => r - boots[iB][k]);
-  gaps.push({ from: b, to: a, fitted: Math.round(R[iA] - R[iB]), lo: Math.round(ci(diffs)[0]), hi: Math.round(ci(diffs)[1]), direct, h2hGames: h2h.length });
 }
 if (gaps.length) {
   console.log("\nadjacent gap          fitted   95% interval   head-to-head (games)");

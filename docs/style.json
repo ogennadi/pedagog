@@ -1,0 +1,167 @@
+{
+  "files": 9,
+  "players": {
+    "L10": {
+      "games": 300,
+      "moves": 9074,
+      "aggression": 34.63,
+      "sacrificed": 3.24,
+      "blundered": 2.93,
+      "checks": 24.91,
+      "king_distance": 5.05
+    },
+    "L2": {
+      "games": 300,
+      "moves": 8961,
+      "aggression": 33.6,
+      "sacrificed": 4.27,
+      "blundered": 2.27,
+      "checks": 20.78,
+      "king_distance": 5.08
+    },
+    "L3": {
+      "games": 300,
+      "moves": 8195,
+      "aggression": 34.57,
+      "sacrificed": 4.42,
+      "blundered": 2.37,
+      "checks": 21.32,
+      "king_distance": 5.16
+    },
+    "L4": {
+      "games": 300,
+      "moves": 6717,
+      "aggression": 39.3,
+      "sacrificed": 5.24,
+      "blundered": 3.47,
+      "checks": 23.58,
+      "king_distance": 5.21
+    },
+    "L5": {
+      "games": 300,
+      "moves": 6510,
+      "aggression": 36.94,
+      "sacrificed": 5.12,
+      "blundered": 3.86,
+      "checks": 21.6,
+      "king_distance": 5.2
+    },
+    "L6": {
+      "games": 300,
+      "moves": 6927,
+      "aggression": 32.7,
+      "sacrificed": 4.33,
+      "blundered": 3.59,
+      "checks": 19.71,
+      "king_distance": 5.26
+    },
+    "L7": {
+      "games": 300,
+      "moves": 7009,
+      "aggression": 31.52,
+      "sacrificed": 4.19,
+      "blundered": 3.17,
+      "checks": 18.93,
+      "king_distance": 5.21
+    },
+    "L8": {
+      "games": 300,
+      "moves": 8126,
+      "aggression": 33.52,
+      "sacrificed": 4.15,
+      "blundered": 2.99,
+      "checks": 21.08,
+      "king_distance": 5.18
+    },
+    "L9": {
+      "games": 300,
+      "moves": 8909,
+      "aggression": 34.08,
+      "sacrificed": 3.27,
+      "blundered": 3.42,
+      "checks": 24.28,
+      "king_distance": 5.09
+    },
+    "R10": {
+      "games": 300,
+      "moves": 8993,
+      "aggression": 10.34,
+      "sacrificed": 1.6,
+      "blundered": 1.31,
+      "checks": 5.54,
+      "king_distance": 6.06
+    },
+    "R2": {
+      "games": 300,
+      "moves": 8923,
+      "aggression": 13.18,
+      "sacrificed": 2.71,
+      "blundered": 2.21,
+      "checks": 5.04,
+      "king_distance": 5.95
+    },
+    "R3": {
+      "games": 300,
+      "moves": 8149,
+      "aggression": 13.78,
+      "sacrificed": 2.85,
+      "blundered": 2.05,
+      "checks": 5.24,
+      "king_distance": 6.04
+    },
+    "R4": {
+      "games": 300,
+      "moves": 6677,
+      "aggression": 17.16,
+      "sacrificed": 3.92,
+      "blundered": 2.58,
+      "checks": 5.39,
+      "king_distance": 6.09
+    },
+    "R5": {
+      "games": 300,
+      "moves": 6487,
+      "aggression": 18.54,
+      "sacrificed": 4.24,
+      "blundered": 2.71,
+      "checks": 5.83,
+      "king_distance": 6.06
+    },
+    "R6": {
+      "games": 300,
+      "moves": 6894,
+      "aggression": 18.2,
+      "sacrificed": 3.74,
+      "blundered": 2.42,
+      "checks": 6.98,
+      "king_distance": 6.05
+    },
+    "R7": {
+      "games": 300,
+      "moves": 6966,
+      "aggression": 14.66,
+      "sacrificed": 2.86,
+      "blundered": 2.0,
+      "checks": 6.09,
+      "king_distance": 6.06
+    },
+    "R8": {
+      "games": 300,
+      "moves": 8038,
+      "aggression": 12.2,
+      "sacrificed": 1.83,
+      "blundered": 1.12,
+      "checks": 6.72,
+      "king_distance": 6.03
+    },
+    "R9": {
+      "games": 300,
+      "moves": 8823,
+      "aggression": 10.86,
+      "sacrificed": 1.72,
+      "blundered": 1.19,
+      "checks": 5.69,
+      "king_distance": 6.05
+    }
+  }
+}
