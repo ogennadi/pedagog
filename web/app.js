@@ -15,7 +15,7 @@ const SETTING_IDS = ["mode", "colour", "opponent", "level", "level2", "variant",
 const OPPONENTS = ["pedagog", "reference", "mystery"];
 
 /* ---- Engine: UCI over postMessage. Falls back to running the engine on the main
-   thread when the page is opened from file:// in a browser that refuses Workers there. */
+   thread in a browser that refuses to start the Worker. */
 class Engine {
   constructor() {
     this.lines = [];
@@ -24,12 +24,9 @@ class Engine {
   }
   async start() {
     try {
-      // Normal path: the engine in a Worker. The single-file build embeds the engine source and
-      // starts it from a Blob URL, which browsers allow even from file:// (a file:// Worker is
-      // refused). Give a cold first load (service worker installing, files still downloading)
-      // plenty of time before giving up on it.
-      const source = globalThis.PEDAGOG_ENGINE_SOURCE;
-      const worker = new Worker(source ? URL.createObjectURL(new Blob([source], { type: "text/javascript" })) : "engine.js");
+      // Normal path: the engine in a Worker. Give a cold first load (service worker installing,
+      // files still downloading) plenty of time before giving up on it.
+      const worker = new Worker("engine.js");
       worker.onmessage = (e) => this.onLine(e.data);
       const ok = await new Promise((resolve) => {
         worker.onerror = () => resolve(false);
@@ -45,7 +42,6 @@ class Engine {
       this.worker = null;
       await new Promise((resolve, reject) => {
         const s = document.createElement("script");
-        if (globalThis.PEDAGOG_ENGINE_SOURCE) { s.textContent = globalThis.PEDAGOG_ENGINE_SOURCE; document.head.appendChild(s); resolve(); return; }
         s.src = "engine.js"; s.onload = resolve; s.onerror = () => reject(new Error("could not load engine.js"));
         document.head.appendChild(s);
       });
@@ -564,13 +560,12 @@ document.addEventListener("keydown", (e) => {
   e.preventDefault();
 });
 
-/* Display preferences from the settings page (config.html). The single-file build has no piece
-   files beside it, so it keeps chessground's built-in set and only takes the colours. */
+/* Display preferences from the settings page (config.html). */
 function applyPrefs() {
   const prefs = loadPrefs();
   applyTheme(prefs.theme);
   applyCss("board-theme-css", boardCss(BOARD_THEMES.find((t) => t.name === prefs.board), "html"));
-  if (prefs.pieces !== "cburnett" && !globalThis.PEDAGOG_ENGINE_SOURCE)
+  if (prefs.pieces !== "cburnett")
     applyCss("piece-set-css", pieceCss(prefs.pieces, "html .cg-wrap", "vendor/pieces"));
 }
 

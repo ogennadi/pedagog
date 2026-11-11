@@ -7,10 +7,9 @@ Domain Dedication (https://creativecommons.org/publicdomain/zero/1.0/).
 
 This dedication applies only to original Pedagog-authored material. It does
 not apply to third-party software, data, or other material, which remains
-under its own terms. In particular, the combined web application and
-pedagog-app.html bundle include chessground, which is licensed under
-GPL-3.0-or-later; distribution of those combined works is subject to
-GPL-3.0-or-later. See
+under its own terms. In particular, the combined web application includes
+chessground, which is licensed under GPL-3.0-or-later; distribution of that
+combined work is subject to GPL-3.0-or-later. See
 THIRD_PARTY_NOTICES.md and the license files in web/vendor/.
 
 No warranties are provided. The complete CC0 1.0 legal text follows.

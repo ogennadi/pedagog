@@ -8,7 +8,6 @@
     "bench": "bun engine.js bench",
     "perft": "bun engine.js perft",
     "web": "bun tools/serve.js",
-    "bundle": "bun tools/bundle.js",
     "build": "bun tools/build.js",
     "test": "bun test tests/rules.test.js",
     "match": "bun tools/match.js",

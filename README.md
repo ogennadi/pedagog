@@ -25,7 +25,6 @@ bun run perft                 # built-in perft command
 bun test                      # rules, perft and basic search/UCI tests
 bun run web                   # http://localhost:8080
 bun run build                 # creates dist/, the deployable web app
-bun run bundle                # creates dist/pedagog-app.html
 ```
 
 The repository is laid out as:
@@ -39,15 +38,14 @@ The repository is laid out as:
 
 `bun run web` serves `web/` with the engine beside it, the same layout
 `bun run build` writes to `dist/`: deploy the contents of `dist/` as the site
-root. The bundled `dist/pedagog-app.html` can be opened directly from disk.
-Both are generated and ignored by Git.
+root. `dist/` is generated and ignored by Git.
 
 ### Release build
 
-Run `bun test`, `bun run build` and `bun run bundle` before publishing. Attach
-the generated `pedagog-app.html` only with the matching source and license materials; the
-bundle embeds the third-party license texts, and the combined app includes
-GPL-3.0-or-later chessground. Do not commit the generated HTML as source.
+Run `bun test` and `bun run build` before publishing, then deploy the contents of
+`dist/`. The app includes GPL-3.0-or-later chessground, so publish it with the matching
+source and license materials (`dist/` carries `LICENSE` and
+`THIRD_PARTY_NOTICES.md`). Do not commit `dist/`.
 
 ## Engine features
 
@@ -83,9 +81,8 @@ game, guess which style it was (or say you don't know); the answer is then
 revealed and the verdict kept in a local log, so the style can be judged blind
 over many games.
 
-The gear at the top right opens the settings page: light or dark appearance, board
-colours, and any of 38 piece sets (35 from Lichess), shown side by side on one page. The
-single-file build keeps the default pieces.
+The gear in the setup panel opens the settings page: light or dark appearance, board
+colours, and any of 38 piece sets (35 from Lichess), shown side by side on one page.
 
 ## UCI options
 
@@ -123,8 +120,8 @@ method and interpretation.
 ## Licensing
 
 Original Pedagog-authored material is dedicated to the public domain under
-CC0 1.0. This does not relicense dependencies: the combined web app and
-single-file build include GPL-3.0-or-later chessground; the remaining vendors
+CC0 1.0. This does not relicense dependencies: the combined web app includes
+GPL-3.0-or-later chessground; the remaining vendors
 retain their MIT and BSD-2-Clause terms. See [`LICENSE`](LICENSE) and
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistributing a
 combined web build.

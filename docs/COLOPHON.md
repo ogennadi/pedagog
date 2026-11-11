@@ -290,7 +290,8 @@ installed on a phone. **`pedagog-app.html`** is the same app built into one
 self-contained file (`bun run bundle`): browsers refuse ES modules and
 Workers from `file://`, so this build inlines everything and starts the
 engine from a Blob URL, which they do allow — double-click it and it runs
-with the engine off the main thread. Bot time is fixed: levels 1–9 are
+with the engine off the main thread. *(That single-file build was removed after Part III:
+the served app, which also works offline, is the only one.)* Bot time is fixed: levels 1–9 are
 depth-bounded and answer in milliseconds, level 10 thinks for one second.
 *(Since Part III every level is depth-bounded — the app sends `go depth 100`
 and the level decides — and the app also offers the opponent picker and the
@@ -302,8 +303,7 @@ Time spent away from the page is not added on reload. Storage is specific to
 the browser and origin (or local file); it does not sync between devices.
 The checked-in vendor license texts identify chessground as GPL-3.0-or-later,
 chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
-app and single-file bundle include chessground and are distributed under
-GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
+app includes chessground and is distributed under GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
 to CC0 separately. The
 standalone `engine.js` is independent of the web dependencies. See
 `LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
@@ -317,7 +317,7 @@ also `L10@6` for a fixed depth without a clock),
 `tools/style.py` (style statistics, Part III; `R1`..`R10` in `match.js` are
 the plain style),
 `tools/plot.py` (the figure), `tools/serve.js` (static server with the
-cross-origin-isolation headers), `tools/bundle.js` (the single-file app).
+cross-origin-isolation headers), `tools/build.js` (assembles `dist/`).
 Match PGNs and metadata land in `tools/out/` (ignored). Each run has an
 independent tag; existing files are not overwritten by default.
 
@@ -436,14 +436,13 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `engine.js` — the engine, one file, read top to bottom (called `pedagog.js` before Part III).
 - `web/` — the web app (Part II): `index.html`, scripts, styles, the service worker and the
   vendored libraries; `bun run web` serves it with the engine beside it.
-- `dist/` — generated, ignored: `bun run build` assembles the deployable site there, and
-  `bun run bundle` writes `dist/pedagog-app.html`, the same app as one self-contained file.
-- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, build, bundler.
+- `dist/` — generated, ignored: `bun run build` assembles the deployable site there.
+- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, build.
 - `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
   `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs
   behind each published fit.
 - `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`,
-  `bun run build`, `bun run bundle`, `bun run match`, `bun run elo`.
+  `bun run build`, `bun run match`, `bun run elo`.
 
 The original development suite used an isolated VM harness and frozen
 transcript fixtures to exercise search, UCI, fake-clock timing, evaluation,
