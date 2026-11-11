@@ -100,7 +100,6 @@ const MAX_PLY = 100;              // longest line the search will follow
 const INF = 32500;
 const MATE = 32000;               // mate in N plies scores MATE - N
 const MATE_IN_MAX = MATE - MAX_PLY;
-const DRAW = 0;
 
 const FLAG_EP = 1, FLAG_CASTLE = 2;
 
@@ -180,6 +179,9 @@ function think(pos, limits, skill, io) {
 
   const unseen = overlookedRootMoves(pos, skill, rootMoves);
   const maxDepth = Math.min(limits.depth, skillDepth(pos, skill));
+  // A draw is worth -contempt to the side we play, +contempt to the other.
+  const rootSide = pos.side;
+  const drawFor = (side) => (side === rootSide ? -skill.contempt : skill.contempt);
   let nodes = 0, stopped = false, rootDepth = 0;
   let best = {
     bestMove: rootMoves.find((move) => !unseen.includes(move)),
@@ -209,14 +211,17 @@ function think(pos, limits, skill, io) {
     nodes++;
     if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached()) stopped = true;
     if (stopped) return { score: 0, pv: NO_LINE };
-    if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
-    if (depth === 0 || ply >= MAX_PLY - 1)
-      return { score: judge(pos, skill), pv: NO_LINE }; // a leaf
+    if (ply > 0 && isDraw(pos)) return { score: drawFor(pos.side), pv: NO_LINE };
+    if (depth === 0 || ply >= MAX_PLY - 1) { // a leaf
+      const score = skill.quiescence ? quiesce(pos, alpha, beta, ply) : judge(pos, skill);
+      return { score, pv: NO_LINE };
+    }
 
     let bestScore = -INF, pv = NO_LINE;
     let raisedAlpha = alpha; // alpha, raised as better moves are found
     let legalMoveCount = 0, searchedMoveCount = 0;
-    for (const move of orderMoves(pos, generateMoves(pos))) {
+    const moves = generateMoves(pos);
+    for (const move of skill.captureOrder ? orderByValue(pos, moves) : orderMoves(pos, moves)) {
       if (ply === 0 && unseen.includes(move)) continue;
       const next = makeMove(pos, move);
       if (next === null) continue;              // leaves our king in check
@@ -237,10 +242,38 @@ function think(pos, limits, skill, io) {
       }
     }
 
-    if (legalMoveCount === 0) return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
+    if (legalMoveCount === 0)
+      return { score: inCheck(pos) ? -MATE + ply : drawFor(pos.side), pv: NO_LINE };
     if (searchedMoveCount === 0) // overlooked every legal move
       return { score: judge(pos, skill), pv: NO_LINE };
     return { score: bestScore, pv };
+  }
+
+  /* Quiescence: at a leaf, keep trying captures (and promotions) until
+     the position is quiet, so a leaf is not judged in the middle of an
+     exchange. The side to move may always "stand pat" instead: decline
+     every capture and take the leaf's own judgement. Returns a score. */
+  function quiesce(pos, alpha, beta, ply) {
+    nodes++;
+    if (rootDepth > 1 && (nodes & 1023) === 0 && limitReached()) stopped = true;
+    if (stopped) return 0;
+    const standPat = judge(pos, skill);
+    if (standPat >= beta || ply >= MAX_PLY - 1) return standPat;
+    let bestScore = standPat, raisedAlpha = Math.max(alpha, standPat);
+    for (const move of capturesByValue(pos, generateMoves(pos))) {
+      const next = makeMove(pos, move);
+      if (next === null) continue;
+      const score = -quiesce(next, -beta, -raisedAlpha, ply + 1);
+      if (stopped) return 0;
+      if (score > bestScore) {
+        bestScore = score;
+        if (score > raisedAlpha) {
+          raisedAlpha = score;
+          if (raisedAlpha >= beta) break;
+        }
+      }
+    }
+    return bestScore;
   }
 }
 
@@ -251,7 +284,8 @@ function think(pos, limits, skill, io) {
    in the order it was generated. Castling is encoded as "king takes
    own rook", so it lands in the first group too. Ranking the
    captures themselves (most valuable victim first, MVV-LVA) is the
-   next refinement; see COLOPHON.md. Returns a new array. */
+   next refinement: orderByValue() below, used at full strength.
+   Returns a new array. */
 function orderMoves(pos, moves) {
   const board = pos.board, early = [], late = [];
   for (const move of moves) {
@@ -260,6 +294,29 @@ function orderMoves(pos, moves) {
     else late.push(move);
   }
   return early.concat(late);
+}
+
+/* Does `move` take a piece or promote? Castling ("king takes own
+   rook") does not count. */
+function isCapture(pos, move) {
+  return moveFlag(move) !== FLAG_CASTLE &&
+    (pos.board[moveTo(move)] !== EMPTY || moveFlag(move) === FLAG_EP || movePromo(move) !== 0);
+}
+
+/* The captures (and promotions) among `moves`, as a new array: the
+   most valuable victim first and, among equal victims, the least
+   valuable attacker first (MVV-LVA). */
+function capturesByValue(pos, moves) {
+  const victim = (move) => (moveFlag(move) === FLAG_EP ? PAWN : pos.board[moveTo(move)] & 7);
+  const gain = (move) => 10 * MG_VALUE[victim(move)] + MG_VALUE[movePromo(move)] -
+    MG_VALUE[pos.board[moveFrom(move)] & 7];
+  return moves.filter((move) => isCapture(pos, move)).sort((a, b) => gain(b) - gain(a));
+}
+
+/* `moves` with the captures ranked by value first, then the rest in
+   the order they were generated. Returns a new array. */
+function orderByValue(pos, moves) {
+  return capturesByValue(pos, moves).concat(moves.filter((move) => !isCapture(pos, move)));
 }
 
 /* ---- Time management -------------------------------------------
@@ -373,6 +430,24 @@ const LADDER = [
   rung(MAX_PLY, 0,       0,      0,    FULL_VISION), // 10 full strength 1894
 ];
 
+/* Full strength's playing style: eager to attack, unwilling to draw.
+     contempt    a draw counts as this many centipawns lost for the side
+                 the engine plays, so it avoids repetitions and dead
+                 simplifications;
+     kingAttack  middlegame bonus, per square, for each knight, bishop,
+                 rook or queen standing closer to the enemy king (queens
+                 count twice), so the pieces gather around the king;
+     materialMg  middlegame material counts this many permille of its
+                 value, so giving it up for an attack costs less.
+   The weakened levels keep the plain style: their ratings were
+   measured without it. */
+const AGGRESSIVE = {
+  contempt: 0, kingAttack: 120, materialMg: 150, quiescence: true, captureOrder: false,
+};
+const PLAIN = {
+  contempt: 0, kingAttack: 0, materialMg: 1000, quiescence: false, captureOrder: false,
+};
+
 /* The skill for a Skill_Level (clamped to 1..SKILL_MAX) and a
    Skill_Seed. The seed picks which weakened opponent a level is; 0
    means the built-in one, so an engine nobody configures still plays
@@ -383,6 +458,7 @@ function skillFor(level, seed) {
   const seedInt = seed | 0;
   return Object.freeze({
     ...(LADDER[clamped - 1] || LADDER[SKILL_MAX - 1]),
+    ...(clamped === SKILL_MAX ? AGGRESSIVE : PLAIN),
     level: clamped,
     seed: seedInt,
     seedKey: mix32(seedInt === 0 ? BUILT_IN_SEED : seedInt),
@@ -397,11 +473,49 @@ function skillDepth(pos, skill) {
   return skill.depth + (hash % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
-/* What this skill makes of `pos`: the evaluation plus, now and then,
-   a misjudgement. This is what the search sees at a leaf. */
+/* What this skill makes of `pos`: the evaluation, its style's view of
+   the position and, now and then, a misjudgement. This is what the
+   search sees at a leaf. */
 function judge(pos, skill) {
-  return evaluate(pos) + blunder(pos, skill);
+  return evaluate(pos) + styleBonus(pos, skill) + blunder(pos, skill);
 }
+
+/* The style's adjustment to the evaluation, in centipawns for the side
+   to move: kingAttack per square that each side's pieces stand closer
+   to the enemy king, less the discounted share of middlegame material.
+   Both fade out, like the middlegame tables, as material leaves. */
+function styleBonus(pos, skill) {
+  if (skill.kingAttack === 0 && skill.materialMg === 1000) return 0;
+  const board = pos.board;
+  let closeness = 0, material = 0, phase = 0; // white minus black
+  for (let sq = 0; sq < 128; sq++) {
+    if (sq & 0x88) { sq += 7; continue; }
+    const piece = board[sq];
+    if (piece === EMPTY) continue;
+    const type = piece & 7, sign = piece < 8 ? 1 : -1;
+    phase += PHASE_INC[type];
+    material += sign * MG_VALUE[type];
+    if (type >= KNIGHT && type <= QUEEN) {
+      const distance = KING_DISTANCE[sq - pos.kingSq[(piece >> 3) ^ 1] + 0x77];
+      closeness += sign * (7 - distance) * (type === QUEEN ? 2 : 1);
+    }
+  }
+  const mg = closeness * skill.kingAttack - material * (1000 - skill.materialMg) / 1000;
+  const score = (mg * Math.min(phase, 24) / 24) | 0;
+  return pos.side === WHITE ? score : -score;
+}
+
+/* King moves between two squares, looked up by their 0x88 difference:
+   KING_DISTANCE[a - b + 0x77]. The difference identifies the file and
+   rank offsets, which is a classic convenience of the 0x88 board. */
+const KING_DISTANCE = (() => {
+  const table = new Int8Array(239);
+  for (let df = -7; df <= 7; df++) {
+    for (let dr = -7; dr <= 7; dr++)
+      table[dr * 16 + df + 0x77] = Math.max(Math.abs(df), Math.abs(dr));
+  }
+  return table;
+})();
 
 /* The occasional misjudgement, added to the evaluation of the rung's
    share of positions: up to blunderWindow centipawns either way. Mate
