@@ -65,3 +65,17 @@ python tools/plot.py --elo tools/out/elo-preview.json --style tools/out/style-pr
 For the published Elo dataset and reproduction instructions, see the
 [calibration archive](../docs/calibration-baseline/README.md). See
 [`COLOPHON.md`](../docs/COLOPHON.md) for the measurement method and interpretation.
+
+## Comparing UCI output
+
+`tools/uci-diff.js` feeds the same UCI scripts (perft, searches at every
+skill level and style, Chess960, bench) to `engine.ts` and to another engine,
+and compares the output line by line, ignoring timing. Use it to check a port,
+or that a refactor plays exactly as before:
+
+```sh
+bun run diff bun path/to/old/engine.ts
+bun run diff java -jar ports/kotlin/engine.jar
+```
+
+It prints `ALL 38 IDENTICAL` and exits 0 when everything matches.

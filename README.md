@@ -27,6 +27,7 @@ bun test                      # rules, perft and basic search/UCI tests
 bun run web                   # http://localhost:8080
 bun run build                 # creates dist/, the deployable web app
 bun run check                 # type-check engine.ts
+bun run diff CMD [ARGS]       # compare another engine's UCI output with engine.ts
 ```
 
 The repository is laid out as:
@@ -35,8 +36,10 @@ The repository is laid out as:
 - `web/` — the web app (`index.html`, its scripts and styles, the service
   worker, vendored libraries).
 - `tests/` — `bun test`; `tools/` — match runner, Elo fit, style statistics,
-  plots, server, build; `docs/` — the COLOPHON (how it was made and measured),
-  calibration data and figures.
+  plots, server, build, UCI diff; `docs/` — the COLOPHON (how it was made and
+  measured), calibration data and figures, [naming](docs/naming.md) and
+  [porting](docs/porting/README.md) notes.
+- `ports/` — throwaway ports to other languages, ignored by Git.
 
 `bun run web` serves `web/` with the engine beside it as `engine.js` (`engine.ts`
 with its types removed by `tools/engine-js.js`, comments kept), the same layout

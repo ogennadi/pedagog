@@ -12,7 +12,8 @@
     "build": "bun tools/build.js",
     "test": "bun test tests/rules.test.js",
     "match": "bun tools/match.js",
-    "elo": "bun tools/elo.js"
+    "elo": "bun tools/elo.js",
+    "diff": "bun tools/uci-diff.js"
   },
   "private": true,
   "devDependencies": {
