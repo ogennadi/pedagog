@@ -4,8 +4,8 @@ Run the commands below from the repository root.
 
 Match tools require Bun. `tools/match.js` wraps
 [cutechess-cli](https://github.com/cutechess/cutechess), and Maia matches also
-require `lc0` plus Maia network files. `tools/blunders.py` and `tools/style.py`
-need `python-chess`; `tools/plot.py` needs Matplotlib. Set executable
+require `lc0` plus Maia network files. `tools/blunders.py`, `tools/style.py` and
+`tools/style-constrictor.py` need `python-chess`; `tools/plot.py` needs Matplotlib. Set executable
 locations using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, and `STOCKFISH`, or pass
 paths on the command line where supported. Maia weights default to
 `tools/models/`.
@@ -48,6 +48,14 @@ imbalance, evaluation swings, score and game length:
 ```sh
 python tools/style.py tools/out/l5-vs-r5.pgn
 ```
+
+For a draft comparison of space-taking and constriction, use
+`python tools/style-constrictor.py --json tools/out/constrictor.json match.pgn`.
+It reports enemy-half squares attacked outside enemy pawn control, the space
+edge over the opponent, the opponent's pseudo-legal mobility, and pawn advance.
+It samples positions after each player's own moves with at least 20 pieces.
+The numbers are uncalibrated proxies, not a style classification: compare
+against a baseline with similar opponents, openings, and game lengths.
 
 Fit Elo only against an explicitly chosen PGN set. The tool intentionally does
 not glob all historical matches:
