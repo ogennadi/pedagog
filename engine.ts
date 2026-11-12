@@ -41,7 +41,7 @@
    board). The only `let`s outside a function belong to the I/O code
    at the very end.
 
-   Positions (S4) are values too: makeMove() returns a new position
+   Positions are values too: makeMove() returns a new position
    rather than changing the old one. That costs some speed, since
    every move copies a board, but nothing ever has to be undone.
 
@@ -55,8 +55,8 @@
    - Hashing is unsigned 32-bit arithmetic: Math.imul is a 32-bit
      multiply that wraps, `>>>` is the logical shift and `>>> 0`
      reads the bits as unsigned. Zobrist keys are combined with XOR.
-   - The board layout (0x88) is reached only through the helpers in
-     S0 (fileOf, rankOf, onBoard, index64, ...), so a port may use
+   - The board layout (0x88) is reached only through a few helpers
+     (fileOf, rankOf, onBoard, index64, ...), so a port may use
      another layout and still produce the same keys and choices.
    - Captures are sorted with an explicit tie-break, so any sort
      algorithm, stable or not, gives the same order.
@@ -607,15 +607,16 @@ const FULL_VISION = 1024;
 const VISION_SLOPE = 16, VISION_FLOOR = 160;
 // Vision lost per ply, and its minimum.
 
-/* Hashing constants, here and in S5. The two multipliers were chosen
-   for how well they scramble bits. The seeds and the salt are
-   arbitrary (any distinct nonzero values would do), but changing any
-   of them changes which positions each skill level misjudges. */
+/* Hashing constants, here and in zobristKeys(). The two multipliers
+   were chosen for how well they scramble bits. The seeds and the
+   salt are arbitrary (any distinct nonzero values would do), but
+   changing any of them changes which positions each skill level
+   misjudges. */
 const GOLDEN = 0x9E3779B9;          // 2^32 / golden ratio (Fibonacci hashing)
 const MIX_MULTIPLIER = 0x45d9f3b;   // from a well-known 32-bit integer hash
 const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0
 const DEPTH_SALT = 0xA5A55A5A;      // keeps the depth draw apart from others
-const ZOBRIST_SEED = 0x2545F491;    // starts the key generator in S5
+const ZOBRIST_SEED = 0x2545F491;    // seeds zobristKeys()
 
 /** One level's knobs. */
 interface Rung {
@@ -677,7 +678,7 @@ const AGGRESSIVE_LADDER: readonly Rung[] = [
                  value, so giving it up for an attack costs less;
      checkBias   at the root, a move that gives check counts this many
                  centipawns better, so it is chosen over equal moves.
-   The plain style turns all of that off. evaluate() in S3 applies the
+   The plain style turns all of that off. evaluate() applies the
    first two. */
 interface Style {
   readonly kingAttack: Score;
@@ -801,12 +802,12 @@ function mix32(x: number): number {
    and comes out in the endgame.
 
    evaluate(pos, style) simply walks the board and adds up material
-   and placement, and the playing style's two terms (see S2): a
+   and placement, and the playing style's two terms (see Style): a
    discount on middlegame material and a bonus for pieces near the
    enemy king. (Real engines keep these sums up to date as each move
    is made, which is faster but spreads the evaluation over more
    than one function.) The skill level's occasional blunder is added
-   separately, by judge() in S2.
+   separately, by judge().
 */
 
 /** Piece-square bonuses, by piece * 64 + index64(sq). */
@@ -953,7 +954,7 @@ function evaluate(pos: Position, style: Style): Score {
      castle          { castlingRookSquare, castlingRightsMask }
      epSquare        en passant target square, or NO_SQUARE
      halfmoveClock   plies since the last capture or pawn move
-     key             Zobrist key (S5)
+     key             Zobrist key (see zobristKeys)
      gamePly         plies played since the FEN was loaded
      capturedPiece   the piece the last move took from its destination
                      square (EMPTY if none, and for en passant)

@@ -34,7 +34,7 @@ time management kept a one-second clock reserve. Then the brief changed:
 make Pedagog *feel* aggressive — sacrifices, checks, pieces swarming the king —
 while staying as strong as Maia-1900 at the top level.
 
-The style is three numbers (section S2 of `engine.ts`, applied in `evaluate()`
+The style is three numbers (`Style` in `engine.ts`, applied in `evaluate()`
 and at the root of the search):
 
 | knob | aggressive | plain | what it does |
@@ -187,7 +187,7 @@ the full engine.
 ### What a level is
 
 Below full strength the engine is weakened the way Gaia does it, with the
-knobs that were measured to matter (section S2 of `engine.ts`):
+knobs that were measured to matter (`LADDER` in `engine.ts`):
 
 | knob | what it does | measured at depth 2, vs the same depth unhandicapped |
 |---|---|---|
