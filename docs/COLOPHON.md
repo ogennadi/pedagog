@@ -12,7 +12,7 @@ GitHub Copilot CLI agent (version 1.0.83), on 2026-10-06.
 
 The harness does not expose exact token counts. Estimated from the session:
 Part I roughly 220,000 tokens of context (prompts, files read, tool output)
-and 100,000 generated, including three complete versions of the engine (then `pedagog.js`, now `engine.js`);
+and 100,000 generated, including three complete versions of the engine (then `pedagog.js`, later `engine.js`, now `engine.ts`);
 Part II roughly 250,000 tokens of context and 90,000 generated. Call it
 half a million tokens in all.
 
@@ -34,7 +34,7 @@ time management kept a one-second clock reserve. Then the brief changed:
 make Pedagog *feel* aggressive — sacrifices, checks, pieces swarming the king —
 while staying as strong as Maia-1900 at the top level.
 
-The style is three numbers (section S2 of `engine.js`, applied in `evaluate()`
+The style is three numbers (section S2 of `engine.ts`, applied in `evaluate()`
 and at the root of the search):
 
 | knob | aggressive | plain | what it does |
@@ -187,7 +187,7 @@ the full engine.
 ### What a level is
 
 Below full strength the engine is weakened the way Gaia does it, with the
-knobs that were measured to matter (section S2 of `engine.js`):
+knobs that were measured to matter (section S2 of `engine.ts`):
 
 | knob | what it does | measured at depth 2, vs the same depth unhandicapped |
 |---|---|---|
@@ -305,7 +305,7 @@ The checked-in vendor license texts identify chessground as GPL-3.0-or-later,
 chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
 app includes chessground and is distributed under GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
 to CC0 separately. The
-standalone `engine.js` is independent of the web dependencies. See
+standalone engine (`engine.ts`) is independent of the web dependencies. See
 `LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
 
 ### Tools
@@ -433,7 +433,9 @@ and PeSTO only if the engine turned out too weak, and it did not.
 
 ## Files
 
-- `engine.js` — the engine, one file, read top to bottom (called `pedagog.js` before Part III).
+- `engine.ts` — the engine, one file, read top to bottom (called `pedagog.js` before Part III and
+  `engine.js` until it moved to TypeScript; the browser still loads `engine.js`, which
+  `tools/engine-js.js` makes from `engine.ts` by removing the types).
 - `web/` — the web app (Part II): `index.html`, scripts, styles, the service worker and the
   vendored libraries; `bun run web` serves it with the engine beside it.
 - `dist/` — generated, ignored: `bun run build` assembles the deployable site there.

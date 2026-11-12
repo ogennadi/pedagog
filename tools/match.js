@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 const here = dirname(Bun.main);
 const root = resolve(here, "..");
-const defaultEngine = resolve(root, "engine.js");
+const defaultEngine = resolve(root, "engine.ts");
 const book = resolve(here, "8moves_v3.epd");
 const help = `Usage: bun tools/match.js <A> <B> <even-games> [options]
 

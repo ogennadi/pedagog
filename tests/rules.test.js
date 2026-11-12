@@ -4,10 +4,10 @@ import { engine } from "./engine.js";
 // Each test loads its own position into `globalThis.pos` and passes it to
 // the engine's functions explicitly.
 const load = (e, spec, chess960 = false) =>
-  e.run(`globalThis.pos = positionFromUci(${JSON.stringify(spec)}, ${chess960})`);
+  e.run(`globalThis.pos = parsePosition(${JSON.stringify(spec)}, ${chess960})`);
 
 // A position's fields as a string, for comparing two positions.
-const snapshot = (e, expr = "pos") => e.read(`((p) => JSON.stringify({ board: [...p.board], kings: [...p.kingSq], counts: [...p.pieceCount], side: p.side, castling: p.castling, epSq: p.epSq, fifty: p.fifty, key: String(p.key) }))(${expr})`);
+const snapshot = (e, expr = "pos") => e.read(`((p) => JSON.stringify({ board: [...p.board], kings: [...p.kingSq], counts: [...p.pieceCount], side: p.sideToMove, castling: p.castlingRights, epSq: p.epSquare, fifty: p.halfmoveClock, key: String(p.key) }))(${expr})`);
 
 const quietIo = "{ now: () => 0, shouldStop: () => false, onInfo: () => {} }";
 
@@ -50,12 +50,12 @@ for (const [name, fen, move] of [
     const before = snapshot(e);
     e.run(`globalThis.move = parseMove(pos, '${move}', true); globalThis.after = makeMove(pos, move)`);
     expect(e.read("move")).not.toBe(0);
-    expect(e.read("after !== null && after.prev === pos")).toBe(true);
+    expect(e.read("after !== null && after.previous === pos")).toBe(true);
     expect(snapshot(e)).toBe(before);
     expect(snapshot(e, "after")).not.toBe(before);
     // The incremental updates agree with loading the new FEN from scratch.
-    expect(snapshot(e, "after")).toBe(snapshot(e, "positionFromFen(toFen(after, true))"));
-    expect(e.read("Number.isSafeInteger(after.key)")).toBe(true); // the sum stays exact
+    expect(snapshot(e, "after")).toBe(snapshot(e, "parseFen(toFen(after, true))"));
+    expect(e.read("Number.isInteger(after.key)")).toBe(true); // the sum stays exact
   });
 }
 
@@ -92,11 +92,11 @@ test("castling notation accepts either convention and rejects blocked/attacked p
 test("FEN rights: standard, file letters, missing rook and en passant", () => {
   const e = engine();
   load(e, "fen 2r1k1r1/8/8/8/8/8/8/1R2K1R1 w GBgc - 0 1", true);
-  expect(e.read("pos.castling")).toBe(15);
+  expect(e.read("pos.castlingRights")).toBe(15);
   expect(e.read("toFen(pos, true)")).toBe("2r1k1r1/8/8/8/8/8/8/1R2K1R1 w GBgc - 0 1");
   load(e, "fen 7k/8/8/8/8/8/8/K7 w KQ -", true);
-  expect(e.read("pos.castling")).toBe(0);
-  expect(e.read("pos.fifty")).toBe(0);
+  expect(e.read("pos.castlingRights")).toBe(0);
+  expect(e.read("pos.halfmoveClock")).toBe(0);
   load(e, "startpos moves e2e4", true);
   expect(e.read("toFen(pos, true)")).toContain(" b KQkq e3 0 ");
 });
@@ -146,10 +146,10 @@ test("attacks distinguish piece directions, slider blockers, colors and board ed
     ["PAWN", "h2", "a4", "WHITE", false],
   ]) {
     e.run(`globalThis.board = new Int8Array(128); board[parseSquare('${square}')] = ${piece}`);
-    expect(e.read(`isAttacked(board, parseSquare('${target}'), ${color})`)).toBe(expected);
+    expect(e.read(`isSquareAttacked(board, parseSquare('${target}'), ${color})`)).toBe(expected);
   }
   e.run("globalThis.board = new Int8Array(128); board[parseSquare('e1')] = ROOK; board[parseSquare('e2')] = PAWN | 8");
-  expect(e.read("isAttacked(board, parseSquare('e4'), WHITE)")).toBe(false);
+  expect(e.read("isSquareAttacked(board, parseSquare('e4'), WHITE)")).toBe(false);
 });
 
 test("black pawn pushes, promotion choices and castling rights after rook capture", () => {
@@ -158,16 +158,16 @@ test("black pawn pushes, promotion choices and castling rights after rook captur
   expect(Array.from(e.read("legalMoves(pos).map((m) => moveToUci(m, false))")).filter((move) => move.startsWith("a2a1")).sort())
     .toEqual(["a2a1b", "a2a1n", "a2a1q", "a2a1r"]);
   load(e, "startpos moves e2e4 e7e5");
-  expect(e.read("squareName(pos.epSq)")).toBe("e6");
+  expect(e.read("squareName(pos.epSquare)")).toBe("e6");
   load(e, "fen r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1 moves a1a8");
-  expect(e.read("pos.castling")).toBe(5); // both queenside rook rights disappear
+  expect(e.read("pos.castlingRights")).toBe(5); // both queenside rook rights disappear
 });
 
 test("think finds a mate in one, returns its line and leaves the position unchanged", () => {
   const e = engine();
   load(e, "fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1");
   const before = snapshot(e);
-  e.run(`globalThis.result = think(pos, limitsFor({ depth: 3 }, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0, true), ${quietIo})`);
+  e.run(`globalThis.result = think(pos, limitsFor({ depth: 3 }, pos.sideToMove, SKILL_MAX), skillFor(SKILL_MAX, 0, true), ${quietIo})`);
   expect(e.read("moveToUci(result.bestMove, false)")).toBe("d1d8");
   expect(e.read("result.score")).toBe(e.read("MATE - 1"));
   expect(e.read("result.pv.length")).toBe(1);
@@ -179,7 +179,7 @@ test("an interrupted search still finishes depth one", () => {
   const e = engine();
   load(e, "startpos");
   const before = snapshot(e);
-  e.run(`globalThis.result = think(pos, limitsFor({}, pos.side, SKILL_MAX), skillFor(SKILL_MAX, 0, true), { now: () => 0, shouldStop: () => true, onInfo: () => {} })`);
+  e.run(`globalThis.result = think(pos, limitsFor({}, pos.sideToMove, SKILL_MAX), skillFor(SKILL_MAX, 0, true), { now: () => 0, shouldStop: () => true, onInfo: () => {} })`);
   expect(e.read("result.depth")).toBeGreaterThanOrEqual(1);
   expect(e.read("result.depth")).toBeLessThan(5);
   expect(e.read("legalMoves(pos).includes(result.bestMove)")).toBe(true);
@@ -190,7 +190,7 @@ test("limitsFor is a pure translation of go numbers", () => {
   const e = engine();
   expect(e.read("JSON.stringify(limitsFor({ movetime: 1000 }, WHITE, SKILL_MAX))"))
     .toBe(JSON.stringify({ depth: 100, nodes: 0, softMs: 980, hardMs: 980 }));
-  expect(e.read("limitsFor({ movetime: 1000 }, WHITE, 5).hardMs")).toBe(Infinity);
+  expect(e.read("limitsFor({ movetime: 1000 }, WHITE, 5).hardMs")).toBe(e.read("NO_TIME_LIMIT"));
   expect(e.read("limitsFor({ wtime: 60000, btime: 1000 }, BLACK, SKILL_MAX).hardMs"))
     .toBe(e.read("limitsFor({ wtime: 1000 }, WHITE, SKILL_MAX).hardMs"));
   // A search that runs to its hard limit never takes the clock below the

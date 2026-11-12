@@ -15,7 +15,7 @@ preserved in their respective `LICENSE` files.
 
 The web application includes chessground and is distributed as a combined work
 under GPL-3.0-or-later terms. The standalone
-`engine.js` is independent of these dependencies. No third-party
+engine (`engine.ts`) is independent of these dependencies. No third-party
 component is relicensed by the CC0 dedication. The piece sets are shown by the settings page (`web/config.html`,
 the gear on the game page) and used by the app when one is chosen there. Only
 sets whose terms allow redistribution are included; the CC BY-NC-SA ones may not

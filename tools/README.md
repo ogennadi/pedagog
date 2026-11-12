@@ -26,7 +26,7 @@ results do not depend on machine load. `--time 1` instead imposes
 cutechess's fixed per-move `st=1` limit, and `L10@3` caps the search at
 depth 3 (a level's own depth ceiling still applies, so a cap above it does nothing). `--engine PATH` chooses the
 current source. Compare an earlier engine explicitly with e.g.
-`bun run match prev:L10 L10 20 --previous-engine path/to/old/engine.js
+`bun run match prev:L10 L10 20 --previous-engine path/to/old/engine.ts
 --time 1 --seed 42 --tag old-vs-current-20261009`.
 
 Every match writes a PGN and a same-tag JSON metadata file under `tools/out/`.

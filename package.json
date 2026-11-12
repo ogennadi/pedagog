@@ -1,17 +1,21 @@
 {
   "name": "pedagog",
   "version": "1.0.0",
-  "description": "A single-file, pedagogical UCI chess engine in JavaScript (Bun or browser)",
-  "main": "engine.js",
+  "description": "A single-file, pedagogical UCI chess engine in TypeScript (Bun or browser)",
+  "main": "engine.ts",
   "scripts": {
-    "start": "bun engine.js",
-    "bench": "bun engine.js bench",
-    "perft": "bun engine.js perft",
+    "start": "bun engine.ts",
+    "bench": "bun engine.ts bench",
+    "perft": "bun engine.ts perft",
+    "check": "tsc -p .",
     "web": "bun tools/serve.js",
     "build": "bun tools/build.js",
     "test": "bun test tests/rules.test.js",
     "match": "bun tools/match.js",
     "elo": "bun tools/elo.js"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "typescript": "5"
+  }
 }

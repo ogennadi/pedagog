@@ -2,9 +2,9 @@
 
 <img src="docs/logo.png" alt="Pedagog logo" width="160" height="160">
 
-**The engine is one file, [`engine.js`](engine.js): read it top to bottom.**
+**The engine is one file, [`engine.ts`](engine.ts): read it top to bottom.**
 
-Pedagog is a small, educational chess engine written in JavaScript. It speaks
+Pedagog is a small, educational chess engine written in TypeScript. It speaks
 UCI and runs under Bun or in the browser. By default it plays an attacking
 style: its pieces crowd the enemy king, it gives up material for the attack,
 and it likes to give check. A plain reference style, at the same strength per
@@ -15,8 +15,9 @@ and bot-vs-bot play, standard chess and Chess960, and a built-in opening book.
 
 ## Run and build
 
-Install [Bun](https://bun.sh/) (no npm packages are required), then from the
-repository root:
+Install [Bun](https://bun.sh/), which runs TypeScript directly, then from the
+repository root run `bun install` once (the one npm package, `typescript`, makes the
+browser's `engine.js` for the tests, the server and the build) and:
 
 ```sh
 bun run start                 # UCI engine; interact through stdin/stdout
@@ -25,25 +26,28 @@ bun run perft                 # built-in perft command
 bun test                      # rules, perft and basic search/UCI tests
 bun run web                   # http://localhost:8080
 bun run build                 # creates dist/, the deployable web app
+bun run check                 # type-check engine.ts
 ```
 
 The repository is laid out as:
 
-- `engine.js` — the engine, the only code at the top level.
+- `engine.ts` — the engine, the only code at the top level.
 - `web/` — the web app (`index.html`, its scripts and styles, the service
   worker, vendored libraries).
 - `tests/` — `bun test`; `tools/` — match runner, Elo fit, style statistics,
   plots, server, build; `docs/` — the COLOPHON (how it was made and measured),
   calibration data and figures.
 
-`bun run web` serves `web/` with the engine beside it, the same layout
+`bun run web` serves `web/` with the engine beside it as `engine.js` (`engine.ts`
+with its types removed by `tools/engine-js.js`, comments kept), the same layout
 `bun run build` writes to `dist/`: deploy the contents of `dist/` as the site
 root. `dist/` is generated and ignored by Git.
 
 ### Release build
 
-Run `bun test` and `bun run build` before publishing, then deploy the contents of
-`dist/`. The app includes GPL-3.0-or-later chessground, so publish it with the matching
+Run `bun install` (the build and tests need the `typescript` package to make
+`engine.js`), then `bun test` and `bun run build` before publishing, and deploy the
+contents of `dist/`. The app includes GPL-3.0-or-later chessground, so publish it with the matching
 source and license materials (`dist/` carries `LICENSE` and
 `THIRD_PARTY_NOTICES.md`). Do not commit `dist/`.
 

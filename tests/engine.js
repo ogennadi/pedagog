@@ -1,17 +1,20 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createContext, runInContext } from "node:vm";
+import { engineJs } from "../tools/engine-js.js";
 
 // An isolated non-Bun host avoids stdin/workers and keeps test access
-// to internals out of the engine's public UCI interface.
-export function engine(path = resolve(import.meta.dir, "..", "engine.js")) {
+// to internals out of the engine's public UCI interface. A .ts engine is
+// run as the engine.js the browser gets.
+export function engine(path = resolve(import.meta.dir, "..", "engine.ts")) {
   let time = 0;
   const output = [];
   const context = createContext({
     performance: { now: () => time },
     console: { log: (line) => output.push(line) },
   });
-  runInContext(readFileSync(path, "utf8"), context, { filename: path });
+  const source = path.endsWith(".ts") ? engineJs(path) : readFileSync(path, "utf8");
+  runInContext(source, context, { filename: path });
   return {
     output,
     read: (expression) => runInContext(expression, context),
