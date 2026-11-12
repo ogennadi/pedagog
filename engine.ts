@@ -167,7 +167,8 @@ const FLAG_EP: MoveType = 1, FLAG_CASTLE: MoveType = 2;
 const opponent = (colour: Colour): Colour => (colour === WHITE ? BLACK : WHITE);
 const typeOf = (piece: Piece): PieceType => piece & 7;
 const colourOf = (piece: Piece): Colour => (piece >> 3) as Colour;
-const makePiece = (pieceType: PieceType, colour: Colour): Piece => pieceType | (colour << 3);
+const makePiece = (pieceType: PieceType, colour: Colour): Piece =>
+  pieceType | (colour << 3);
 
 // ---- The board layout: the only code that knows squares are 0x88.
 const BOARD_SIZE = 128;
@@ -178,7 +179,8 @@ const onBoard = (sq: Square): boolean => (sq & 0x88) === 0;
 const flipRank = (sq: Square): Square => makeSquare(fileOf(sq), 7 - rankOf(sq));
 const index64 = (sq: Square): Index64 => rankOf(sq) * 8 + fileOf(sq);
 /** The 64 squares, a1, b1, ... h8: the order every board walk uses. */
-const SQUARES: readonly Square[] = Array.from({ length: 64 }, (_, i) => makeSquare(i % 8, Math.floor(i / 8)));
+const SQUARES: readonly Square[] = Array.from({ length: 64 },
+  (_, i) => makeSquare(i % 8, Math.floor(i / 8)));
 /** One square forward for a pawn of each colour. */
 const PAWN_STEP: readonly [number, number] = [16, -16];
 
@@ -186,10 +188,13 @@ const fromSq = (move: Move): Square => move & 127;
 const toSq = (move: Move): Square => (move >> 7) & 127;
 const promoType = (move: Move): PieceType => (move >> 14) & 7;
 const moveType = (move: Move): MoveType => (move >> 17) & 3;
-const encodeMove = (from: Square, to: Square, promo: PieceType, type: MoveType): Move =>
+const encodeMove = (
+  from: Square, to: Square, promo: PieceType, type: MoveType,
+): Move =>
   from | (to << 7) | (promo << 14) | (type << 17);
 
-const squareName = (sq: Square): string => FILE_NAMES[fileOf(sq)] + RANK_NAMES[rankOf(sq)];
+const squareName = (sq: Square): string =>
+  FILE_NAMES[fileOf(sq)] + RANK_NAMES[rankOf(sq)];
 const parseSquare = (str: string): Square =>
   makeSquare(FILE_NAMES.indexOf(str[0]), RANK_NAMES.indexOf(str[1]));
 
@@ -240,7 +245,8 @@ const now = (): Millis => performance.now();
 const NO_LINE: Pv = Object.freeze([]);
 const QSEARCH_PLIES = 4; // captures followed past a leaf
 
-/** How far and how long to search. After softMs no new depth starts; at hardMs the search is cut off. */
+/** How far and how long to search. After softMs no new depth
+    starts; at hardMs the search is cut off. */
 interface Limits {
   readonly depth: number;
   readonly nodes: number;          // 0 = no limit
@@ -264,7 +270,8 @@ interface Line {
   readonly pv: Pv;
 }
 
-/** What think() needs from the world: a clock, a stop request and a place to report each depth. */
+/** What think() needs from the world: a clock, a stop request and
+    a place to report each depth. */
 interface SearchIo {
   now(): Millis;
   shouldStop(): boolean;
@@ -278,11 +285,16 @@ const STOPPED: Line = Object.freeze({ score: 0, pv: NO_LINE });
    stop request, `shouldStop()`; and `onInfo(result)`, called after
    every finished depth. Returns the last finished depth's Result;
    bestMove is NO_MOVE when there is no legal move. */
-function think(pos: Position, limits: Limits, skill: Skill, io: SearchIo): Result {
+function think(
+  pos: Position, limits: Limits, skill: Skill, io: SearchIo,
+): Result {
   const startTime = io.now();
   const rootMoves = legalMoves(pos);
   if (rootMoves.length === 0)
-    return { bestMove: NO_MOVE, depth: 0, score: 0, nodes: 0, elapsed: 0, pv: NO_LINE };
+    return {
+      bestMove: NO_MOVE, depth: 0, score: 0, nodes: 0, elapsed: 0,
+      pv: NO_LINE,
+    };
 
   if (skill.level === 1) {
     const move = randomMove(pos, skill, rootMoves);
@@ -326,7 +338,10 @@ class Search {
   stopped = false;
   rootDepth = 0;
 
-  constructor(limits: Limits, skill: Skill, io: SearchIo, unseen: Pv, startTime: Millis) {
+  constructor(
+    limits: Limits, skill: Skill, io: SearchIo,
+    unseen: Pv, startTime: Millis,
+  ) {
     this.limits = limits;
     this.skill = skill;
     this.io = io;
@@ -345,27 +360,36 @@ class Search {
      and stop at a beta cutoff. `hint` is what remains of the previous
      depth's best line along this path (or NO_LINE): its first move is
      tried first, as it is likely the best again. */
-  search(pos: Position, alpha: Score, beta: Score, depth: number, ply: number, hint: Pv): Line {
+  search(
+    pos: Position, alpha: Score, beta: Score,
+    depth: number, ply: number, hint: Pv,
+  ): Line {
     if (this.countNodeAndCheckStop()) return STOPPED;
     if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
     if (depth === 0 || ply >= MAX_PLY - 1) // a leaf
-      return { score: this.qsearch(pos, alpha, beta, ply, QSEARCH_PLIES), pv: NO_LINE };
+      return {
+        score: this.qsearch(pos, alpha, beta, ply, QSEARCH_PLIES),
+        pv: NO_LINE,
+      };
 
     let bestScore = -INF, pv = NO_LINE;
     let raisedAlpha = alpha; // alpha, raised as better moves are found
     let legalMoveCount = 0;
-    for (const move of orderMoves(pos, generateMoves(pos), hint[0] ?? NO_MOVE)) {
+    const pvMove = hint[0] ?? NO_MOVE;
+    for (const move of orderMoves(pos, generateMoves(pos), pvMove)) {
       const next = makeMove(pos, move);
       if (next === null) continue;              // leaves our king in check
       legalMoveCount++;
       if (this.overlooks(next, move, ply)) continue;                 // skill
       const bias = this.checkBias(next, ply);                         // skill
       const childHint = move === hint[0] ? hint.slice(1) : NO_LINE;
-      const child = this.search(next, bias - beta, bias - raisedAlpha, depth - 1, ply + 1, childHint);
+      const child = this.search(next, bias - beta, bias - raisedAlpha,
+        depth - 1, ply + 1, childHint);
       if (this.stopped) return STOPPED;
 
       // A mate score is exact and keeps no bias.
-      const score = isMateScore(child.score) ? -child.score : bias - child.score;
+      const score = isMateScore(child.score)
+        ? -child.score : bias - child.score;
       if (score > bestScore) {
         bestScore = score;
         if (score > raisedAlpha) {
@@ -376,8 +400,9 @@ class Search {
       }
     }
 
-    if (legalMoveCount === 0) return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
-    if (bestScore === -INF) // overlooked every legal move                    skill
+    if (legalMoveCount === 0) // checkmate or stalemate
+      return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
+    if (bestScore === -INF) // skill: overlooked every legal move
       return { score: judge(pos, this.skill), pv: NO_LINE };
     return { score: bestScore, pv };
   }
@@ -388,15 +413,20 @@ class Search {
      every capture and take the leaf's own judgement. Only `pliesLeft`
      more captures are followed, as long sequences cost much and change
      little. Returns a score. */
-  qsearch(pos: Position, alpha: Score, beta: Score, ply: number, pliesLeft: number): Score {
+  qsearch(
+    pos: Position, alpha: Score, beta: Score,
+    ply: number, pliesLeft: number,
+  ): Score {
     if (this.countNodeAndCheckStop()) return 0;
     const standPat = judge(pos, this.skill);
-    if (standPat >= beta || pliesLeft === 0 || ply >= MAX_PLY - 1) return standPat;
+    if (standPat >= beta || pliesLeft === 0 || ply >= MAX_PLY - 1)
+      return standPat;
     let bestScore = standPat, raisedAlpha = Math.max(alpha, standPat);
     for (const move of capturesByValue(pos, generateMoves(pos))) {
       const next = makeMove(pos, move);
       if (next === null) continue;
-      const score = -this.qsearch(next, -beta, -raisedAlpha, ply + 1, pliesLeft - 1);
+      const score =
+        -this.qsearch(next, -beta, -raisedAlpha, ply + 1, pliesLeft - 1);
       if (this.stopped) return 0;
       if (score > bestScore) {
         bestScore = score;
@@ -413,7 +443,9 @@ class Search {
      to `next`? At the root the overlooked moves were chosen in
      advance; deeper, seesMove() decides. */
   overlooks(next: Position, move: Move, ply: number): boolean {
-    return ply === 0 ? this.unseen.includes(move) : !seesMove(next, this.skill, move, ply);
+    return ply === 0
+      ? this.unseen.includes(move)
+      : !seesMove(next, this.skill, move, ply);
   }
 
   /* At the root the style may favour checks: a move into `next` that
@@ -428,17 +460,20 @@ class Search {
      finishes, so there is always a move to play. */
   countNodeAndCheckStop(): boolean {
     this.nodes++;
-    if (this.rootDepth > 1 && this.nodes % 1024 === 0 && this.limitReached()) this.stopped = true;
+    const checkNow = this.rootDepth > 1 && this.nodes % 1024 === 0;
+    if (checkNow && this.limitReached()) this.stopped = true;
     return this.stopped;
   }
 
   limitReached(): boolean {
     return (this.limits.nodes > 0 && this.nodes >= this.limits.nodes) ||
-      this.io.now() - this.startTime >= this.limits.hardMs || this.io.shouldStop();
+      this.io.now() - this.startTime >= this.limits.hardMs ||
+      this.io.shouldStop();
   }
 }
 
-const isMateScore = (score: Score): boolean => Math.abs(score) >= MATE_IN_MAX_PLY;
+const isMateScore = (score: Score): boolean =>
+  Math.abs(score) >= MATE_IN_MAX_PLY;
 
 /* ---- Move ordering --------------------------------------------
    Alpha-beta prunes most when a good move is tried first. The best
@@ -449,7 +484,10 @@ const isMateScore = (score: Score): boolean => Math.abs(score) >= MATE_IN_MAX_PL
    were generated. Returns a new array. */
 function orderMoves(pos: Position, moves: Pv, pvMove: Move): Move[] {
   const rest = moves.filter((move) => move !== pvMove);
-  const ordered = [...capturesByValue(pos, rest), ...rest.filter((move) => !isCapture(pos, move))];
+  const ordered = [
+    ...capturesByValue(pos, rest),
+    ...rest.filter((move) => !isCapture(pos, move)),
+  ];
   return rest.length < moves.length ? [pvMove, ...ordered] : ordered;
 }
 
@@ -457,7 +495,8 @@ function orderMoves(pos: Position, moves: Pv, pvMove: Move): Move[] {
    rook") does not count. */
 function isCapture(pos: Position, move: Move): boolean {
   return moveType(move) !== FLAG_CASTLE &&
-    (pos.board[toSq(move)] !== EMPTY || moveType(move) === FLAG_EP || promoType(move) !== 0);
+    (pos.board[toSq(move)] !== EMPTY || moveType(move) === FLAG_EP ||
+      promoType(move) !== 0);
 }
 
 /* The captures (and promotions) among `moves`, as a new array, by
@@ -466,7 +505,8 @@ function isCapture(pos: Position, move: Move): boolean {
 function capturesByValue(pos: Position, moves: Pv): Move[] {
   const captures = moves.filter((move) => isCapture(pos, move));
   const scores = captures.map((move) => captureScore(pos, move));
-  const order = captures.map((_, i) => i).sort((a, b) => scores[b] - scores[a] || a - b);
+  const order = captures.map((_, i) => i)
+    .sort((a, b) => scores[b] - scores[a] || a - b);
   return order.map((i) => captures[i]);
 }
 
@@ -474,7 +514,8 @@ function capturesByValue(pos: Position, moves: Pv): Move[] {
    times the victim's value, plus the value of a promotion, minus the
    attacker's value. */
 function captureScore(pos: Position, move: Move): number {
-  const victim = moveType(move) === FLAG_EP ? PAWN : typeOf(pos.board[toSq(move)]);
+  const victim = moveType(move) === FLAG_EP
+    ? PAWN : typeOf(pos.board[toSq(move)]);
   return 10 * MG_VALUE[victim] + MG_VALUE[promoType(move)] -
     MG_VALUE[typeOf(pos.board[fromSq(move)])];
 }
@@ -511,8 +552,10 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
   const movesToGo = go.movestogo || 30;
   const usable = Math.max(0, time - 1000); // the first second is the reserve
   const incShare = Math.floor(3 * inc / 4);
-  const softMs = Math.max(1, Math.floor(usable / movesToGo) + incShare - MOVE_OVERHEAD);
-  const hardMs = Math.max(1, Math.min(2 * softMs, Math.floor(usable / 4) + incShare - MOVE_OVERHEAD));
+  const softMs = Math.max(1,
+    Math.floor(usable / movesToGo) + incShare - MOVE_OVERHEAD);
+  const budget = Math.floor(usable / 4) + incShare - MOVE_OVERHEAD;
+  const hardMs = Math.max(1, Math.min(2 * softMs, budget));
   return { ...untimed, softMs, hardMs };
 }
 
@@ -571,13 +614,13 @@ const VISION_SLOPE = 16, VISION_FLOOR = 160;
 const GOLDEN = 0x9E3779B9;          // 2^32 / golden ratio (Fibonacci hashing)
 const MIX_MULTIPLIER = 0x45d9f3b;   // from a well-known 32-bit integer hash
 const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0
-const DEPTH_SALT = 0xA5A55A5A;      // keeps the depth draw apart from the others
+const DEPTH_SALT = 0xA5A55A5A;      // keeps the depth draw apart from others
 const ZOBRIST_SEED = 0x2545F491;    // starts the key generator in S5
 
 /** One level's knobs. */
 interface Rung {
   readonly depth: number;
-  readonly deeperPermille: number;  // share of positions searched one ply deeper
+  readonly deeperPermille: number;  // share of positions searched a ply deeper
   readonly blunderWindow: Score;    // largest misjudgement, either way
   readonly blunderPermille: number; // share of positions misjudged
   readonly vision: number;          // chance, out of 1024, of noticing a move
@@ -702,20 +745,26 @@ function blunder(pos: Position, skill: Skill): Score {
    the move gives check are known. Two independent 10-bit draws from
    one hash: the first chance, and the second one that captures and
    checks get. */
-function seesMove(after: Position, skill: Skill, move: Move, ply: number): boolean {
+function seesMove(
+  after: Position, skill: Skill, move: Move, ply: number,
+): boolean {
   if (skill.vision >= FULL_VISION) return true;
   const chance = Math.max(skill.vision - VISION_SLOPE * ply, VISION_FLOOR);
   const hash = mix32(after.key ^ Math.imul(move, GOLDEN) ^ skill.seedKey);
   if (((hash >>> 20) & 1023) < chance) return true;
-  const easy = after.capturedPiece !== EMPTY || moveType(move) === FLAG_EP || inCheck(after);
+  const easy = after.capturedPiece !== EMPTY ||
+    moveType(move) === FLAG_EP || inCheck(after);
   return easy && ((hash >>> 8) & 1023) < chance;
 }
 
 /* The root moves the player overlooks. If it would overlook them all,
    it sees them all: a move has to be played. */
-function overlookedRootMoves(pos: Position, skill: Skill, rootMoves: Pv): Move[] {
+function overlookedRootMoves(
+  pos: Position, skill: Skill, rootMoves: Pv,
+): Move[] {
   if (skill.vision >= FULL_VISION) return [];
-  const unseen = rootMoves.filter((move) => !seesMove(makeLegalMove(pos, move), skill, move, 0));
+  const unseen = rootMoves.filter((move) =>
+    !seesMove(makeLegalMove(pos, move), skill, move, 0));
   return unseen.length === rootMoves.length ? [] : unseen;
 }
 
@@ -771,18 +820,29 @@ const PHASE_MAX = 24;
 
 /* Bonus for a white piece of `pieceType` on file f, rank r (0 = rank
    1), as [middlegame, endgame]. */
-function psqBonus(pieceType: PieceType, f: File, r: Rank): readonly [mg: Score, eg: Score] {
+function psqBonus(
+  pieceType: PieceType, f: File, r: Rank,
+): readonly [mg: Score, eg: Score] {
   // 0 on the rim .. 3 in the four centre squares
-  const centre = 3 - Math.floor((Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7)) - 1) / 2);
+  const fromCentre = Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7));
+  const centre = 3 - Math.floor((fromCentre - 1) / 2);
   const home = r === 0 ? -10 : 0; // nudge to develop
   switch (pieceType) {
-    case PAWN:
-      return [(r - 1) * 3 + ((f === 3 || f === 4) && (r === 3 || r === 4) ? 15 : 0), (r - 1) * 12];
+    case PAWN: {
+      const centrePawn = (f === 3 || f === 4) && (r === 3 || r === 4);
+      return [(r - 1) * 3 + (centrePawn ? 15 : 0), (r - 1) * 12];
+    }
     case KNIGHT: return [centre * 12 - 24 + home, centre * 12 - 24];
     case BISHOP: return [centre * 6 - 12 + home, centre * 6 - 12];
-    case ROOK: return [(f === 3 || f === 4 ? 5 : 0) + (r === 6 ? 15 : 0), r === 6 ? 15 : 0];
+    case ROOK: {
+      const seventh = r === 6 ? 15 : 0;
+      return [(f === 3 || f === 4 ? 5 : 0) + seventh, seventh];
+    }
     case QUEEN: return [centre * 3 - 6, centre * 5 - 10];
-    default: return [-Math.min(r, 3) * 25 + (f <= 2 || f >= 5 ? 20 : -10), centre * 15 - 30]; // KING
+    default: { // KING
+      const shelter = f <= 2 || f >= 5 ? 20 : -10;
+      return [-Math.min(r, 3) * 25 + shelter, centre * 15 - 30];
+    }
   }
 }
 
@@ -807,13 +867,15 @@ function pieceSquareTables(): readonly [mg: PsqTable, eg: PsqTable] {
 
 const [PSQ_MG, PSQ_EG] = pieceSquareTables();
 
-/* King moves between two squares: KING_DISTANCE[index64(a) * 64 + index64(b)]. */
+/* King moves between two squares:
+   KING_DISTANCE[index64(a) * 64 + index64(b)]. */
 function kingDistances(): Int8Array {
   const table = new Int8Array(64 * 64);
   for (const a of SQUARES) {
     for (const b of SQUARES) {
-      table[index64(a) * 64 + index64(b)] =
-        Math.max(Math.abs(fileOf(a) - fileOf(b)), Math.abs(rankOf(a) - rankOf(b)));
+      const files = Math.abs(fileOf(a) - fileOf(b));
+      const ranks = Math.abs(rankOf(a) - rankOf(b));
+      table[index64(a) * 64 + index64(b)] = Math.max(files, ranks);
     }
   }
   return table;
@@ -834,18 +896,21 @@ function evaluate(pos: Position, style: Style): Score {
     if (piece === EMPTY) continue;
     const pieceType = typeOf(piece), sign = colourOf(piece) === WHITE ? 1 : -1;
     const at = piece * 64 + index64(sq);
-    mg += sign * Math.floor(MG_VALUE[pieceType] * style.materialMg / 1000) + PSQ_MG[at];
+    const material = Math.floor(MG_VALUE[pieceType] * style.materialMg / 1000);
+    mg += sign * material + PSQ_MG[at];
     eg += sign * EG_VALUE[pieceType] + PSQ_EG[at];
     phase += PHASE_INC[pieceType];
     if (pieceType >= KNIGHT && pieceType <= QUEEN) {
       const enemyKing = pos.kingSq[opponent(colourOf(piece))];
       const distance = KING_DISTANCE[index64(sq) * 64 + index64(enemyKing)];
-      mg += sign * (7 - distance) * (pieceType === QUEEN ? 2 : 1) * style.kingAttack;
+      const weight = pieceType === QUEEN ? 2 : 1;
+      mg += sign * (7 - distance) * weight * style.kingAttack;
     }
   }
   // Taper from middlegame to endgame as material leaves the board.
   const tapered = Math.min(phase, PHASE_MAX);
-  const score = Math.trunc((mg * tapered + eg * (PHASE_MAX - tapered)) / PHASE_MAX);
+  const score =
+    Math.trunc((mg * tapered + eg * (PHASE_MAX - tapered)) / PHASE_MAX);
   return pos.sideToMove === WHITE ? score : -score;
 }
 
@@ -927,8 +992,10 @@ interface Position {
   readonly previous: Position | null;
 }
 
-const castlingRight = (colour: Colour, kingside: boolean): Right => colour * 2 + (kingside ? 0 : 1);
-const hasRight = (rights: Rights, right: Right): boolean => ((rights >> right) & 1) !== 0;
+const castlingRight = (colour: Colour, kingside: boolean): Right =>
+  colour * 2 + (kingside ? 0 : 1);
+const hasRight = (rights: Rights, right: Right): boolean =>
+  ((rights >> right) & 1) !== 0;
 const isKingside = (right: Right): boolean => right % 2 === 0;
 
 // Where king and rook land, by Right: g1 c1 g8 c8, f1 d1 f8 d8.
@@ -982,7 +1049,8 @@ function makeMove(pos: Position, move: Move): Position | null {
   const draft = new Draft(pos);
   draft.key ^= zobSide;
   if (pos.epSquare !== NO_SQUARE) draft.key ^= zobEp[fileOf(pos.epSquare)];
-  let epSquare = NO_SQUARE, halfmoveClock = pos.halfmoveClock + 1, capturedPiece = EMPTY;
+  let epSquare = NO_SQUARE, capturedPiece = EMPTY;
+  let halfmoveClock = pos.halfmoveClock + 1;
 
   if (type === FLAG_CASTLE) {
     const right = castlingRight(us, to > from);
@@ -1013,8 +1081,9 @@ function makeMove(pos: Position, move: Move): Position | null {
   draft.key ^= zobCastle[pos.castlingRights] ^ zobCastle[castlingRights];
   return {
     board: draft.board, kingSq: draft.kingSq, pieceCount: draft.pieceCount,
-    sideToMove: them, castlingRights, castle: pos.castle, epSquare, halfmoveClock,
-    key: draft.key, gamePly: pos.gamePly + 1, capturedPiece, previous: pos,
+    sideToMove: them, castlingRights, castle: pos.castle, epSquare,
+    halfmoveClock, key: draft.key, gamePly: pos.gamePly + 1, capturedPiece,
+    previous: pos,
   };
 }
 
@@ -1027,7 +1096,8 @@ function makeLegalMove(pos: Position, move: Move): Position {
 
 /* Is the side to move in check? */
 function inCheck(pos: Position): boolean {
-  return isSquareAttacked(pos.board, pos.kingSq[pos.sideToMove], opponent(pos.sideToMove));
+  const us = pos.sideToMove;
+  return isSquareAttacked(pos.board, pos.kingSq[us], opponent(us));
 }
 
 /* Draw by the fifty-move rule, by repetition (once is enough inside
@@ -1044,8 +1114,10 @@ function isDraw(pos: Position): boolean {
     if (earlier.key === pos.key) return true;
   }
   const n = pos.pieceCount;
-  const count = (pieceType: PieceType) => n[makePiece(pieceType, WHITE)] + n[makePiece(pieceType, BLACK)];
-  return count(PAWN) + count(ROOK) + count(QUEEN) === 0 && count(KNIGHT) + count(BISHOP) <= 1;
+  const count = (pieceType: PieceType) =>
+    n[makePiece(pieceType, WHITE)] + n[makePiece(pieceType, BLACK)];
+  const minors = count(KNIGHT) + count(BISHOP);
+  return count(PAWN) + count(ROOK) + count(QUEEN) === 0 && minors <= 1;
 }
 
 /* ---- FEN ----------------------------------------------------------
@@ -1086,7 +1158,8 @@ function parseFen(fen: string): Position {
   const sideToMove = parts[1] === "b" ? BLACK : WHITE;
   if (sideToMove === BLACK) key ^= zobSide;
 
-  const { castlingRights, castle } = castlingFromFen(board, kingSq, parts[2] ?? "-");
+  const { castlingRights, castle } =
+    castlingFromFen(board, kingSq, parts[2] ?? "-");
   key ^= zobCastle[castlingRights];
 
   const epField = parts[3] ?? "-";
@@ -1105,7 +1178,9 @@ function castlingFromFen(board: Board, kingSq: KingSquares, field: string):
   { castlingRights: Rights; castle: Castle } {
   // The first file, walking from `edge` towards `kingFile`, that holds
   // `rook` on `rank`; -1 if there is none.
-  const outermostRook = (rank: Rank, rook: Piece, edge: File, kingFile: File): File => {
+  const outermostRook = (
+    rank: Rank, rook: Piece, edge: File, kingFile: File,
+  ): File => {
     const step = edge < kingFile ? 1 : -1;
     for (let file = edge; file !== kingFile; file += step)
       if (board[makeSquare(file, rank)] === rook) return file;
@@ -1158,7 +1233,8 @@ function toFen(pos: Position, chess960: boolean): string {
     if (!hasRight(pos.castlingRights, right)) continue;
     const file = fileOf(pos.castle.castlingRookSquare[right]);
     const standard = isKingside(right) ? file === 7 : file === 0;
-    const ch = chess960 && !standard ? FILE_NAMES[file] : isKingside(right) ? "k" : "q";
+    const ch = chess960 && !standard ? FILE_NAMES[file]
+      : isKingside(right) ? "k" : "q";
     rights += right < 2 ? ch.toUpperCase() : ch;
   }
   return `${fen} ${pos.sideToMove === WHITE ? "w" : "b"} ${rights || "-"} ` +
@@ -1171,11 +1247,12 @@ function toFen(pos: Position, chess960: boolean): string {
    and king-takes-rook ("e1h1") in Chess960. */
 function moveToUci(move: Move, chess960: boolean): string {
   const from = fromSq(move);
-  const colour: Colour = rankOf(from) === 0 ? WHITE : BLACK; // of a castling king
+  const kingColour: Colour = rankOf(from) === 0 ? WHITE : BLACK;
   const to = moveType(move) === FLAG_CASTLE && !chess960
-    ? CASTLE_KING_TO[castlingRight(colour, toSq(move) > from)]
+    ? CASTLE_KING_TO[castlingRight(kingColour, toSq(move) > from)]
     : toSq(move);
-  const promotion = promoType(move) !== 0 ? PIECE_CHARS[makePiece(promoType(move), BLACK)] : "";
+  const promo = promoType(move);
+  const promotion = promo !== 0 ? PIECE_CHARS[makePiece(promo, BLACK)] : "";
   return squareName(from) + squareName(to) + promotion;
 }
 
@@ -1184,7 +1261,8 @@ function moveToUci(move: Move, chess960: boolean): string {
 function parseMove(pos: Position, str: string, chess960: boolean): Move {
   for (const move of legalMoves(pos)) {
     if (moveToUci(move, chess960) === str) return move;
-    if (moveType(move) === FLAG_CASTLE && moveToUci(move, !chess960) === str) return move;
+    const castles = moveType(move) === FLAG_CASTLE;
+    if (castles && moveToUci(move, !chess960) === str) return move;
   }
   return NO_MOVE;
 }
@@ -1208,15 +1286,18 @@ const ROOK_OFFSETS: readonly number[] = [-16, -1, 1, 16];
 const KING_OFFSETS: readonly number[] = [-17, -16, -15, -1, 1, 15, 16, 17];
 /** By piece type; pawns are generated separately. */
 const PIECE_OFFSETS: readonly (readonly number[])[] = [
-  [], [], KNIGHT_OFFSETS, BISHOP_OFFSETS, ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS,
+  [], [], KNIGHT_OFFSETS, BISHOP_OFFSETS,
+  ROOK_OFFSETS, KING_OFFSETS, KING_OFFSETS,
 ];
 /** By colour: the two diagonal steps of a capturing pawn. */
-const PAWN_CAPTURE_OFFSETS: readonly (readonly number[])[] = [[15, 17], [-17, -15]];
-/** The sliders, each with the rays it moves along (a queen moves along both). */
+const PAWN_CAPTURE_OFFSETS: readonly (readonly number[])[] =
+  [[15, 17], [-17, -15]];
+/** Each slider with the rays it moves along (a queen moves along both). */
 const SLIDER_RAYS: readonly (readonly [PieceType, readonly number[]])[] =
   [[BISHOP, BISHOP_OFFSETS], [ROOK, ROOK_OFFSETS]];
 
-const isSlider = (pieceType: PieceType): boolean => pieceType >= BISHOP && pieceType <= QUEEN;
+const isSlider = (pieceType: PieceType): boolean =>
+  pieceType >= BISHOP && pieceType <= QUEEN;
 
 /* The pseudo-legal moves of pos for the side to move, as a new array.
    King safety is checked by makeMove(). */
@@ -1229,7 +1310,8 @@ function generateMoves(pos: Position): Move[] {
   // A pawn move, or its four promotions on the last rank.
   const pawnMove = (from: Square, to: Square, type: MoveType): void => {
     if (rankOf(to) === promoRank) {
-      for (let promo = QUEEN; promo >= KNIGHT; promo--) moves.push(encodeMove(from, to, promo, 0));
+      for (let promo = QUEEN; promo >= KNIGHT; promo--)
+        moves.push(encodeMove(from, to, promo, 0));
     } else moves.push(encodeMove(from, to, 0, type));
   };
 
@@ -1242,13 +1324,15 @@ function generateMoves(pos: Position): Move[] {
       const push = sq + up;
       if (board[push] === EMPTY) {
         pawnMove(sq, push, 0);
-        if (rankOf(sq) === startRank && board[push + up] === EMPTY) pawnMove(sq, push + up, 0);
+        if (rankOf(sq) === startRank && board[push + up] === EMPTY)
+          pawnMove(sq, push + up, 0);
       }
       for (const offset of PAWN_CAPTURE_OFFSETS[us]) {
         const to = sq + offset;
         if (!onBoard(to)) continue;
         const occupant = board[to];
-        if (occupant !== EMPTY && colourOf(occupant) === them) pawnMove(sq, to, 0);
+        if (occupant !== EMPTY && colourOf(occupant) === them)
+          pawnMove(sq, to, 0);
         else if (to === pos.epSquare) pawnMove(sq, to, FLAG_EP);
       }
       continue;
@@ -1403,14 +1487,23 @@ interface Io {
   shouldStop(): boolean;
 }
 
-const GO_NUMBERS = ["wtime", "btime", "winc", "binc", "movestogo", "depth", "nodes", "movetime"] as const;
+const GO_NUMBERS = [
+  "wtime", "btime", "winc", "binc",
+  "movestogo", "depth", "nodes", "movetime",
+] as const;
 type GoNumber = typeof GO_NUMBERS[number];
 /** A parsed "go" command: whichever of the numbers it gave, plus infinite. */
-type Go = { readonly [K in GoNumber]?: number } & { readonly infinite?: boolean };
-const isGoNumber = (word: string): word is GoNumber => (GO_NUMBERS as readonly string[]).includes(word);
+type Go =
+  { readonly [K in GoNumber]?: number } & { readonly infinite?: boolean };
+const isGoNumber = (word: string): word is GoNumber =>
+  (GO_NUMBERS as readonly string[]).includes(word);
 
 function newSession(): Session {
-  return { pos: parseFen(START_FEN), skill: skillFor(SKILL_MAX, 0, true), chess960: false };
+  return {
+    pos: parseFen(START_FEN),
+    skill: skillFor(SKILL_MAX, 0, true),
+    chess960: false,
+  };
 }
 
 function uciCommand(session: Session, line: string, io: Io): Session {
@@ -1431,12 +1524,14 @@ function uciCommand(session: Session, line: string, io: Io): Session {
       io.out("option name UCI_Chess960 type check default false");
 
       // 1 = random mover, SKILL_MAX = strongest
-      io.out(`option name Skill_Level type spin default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
+      io.out("option name Skill_Level type spin" +
+        ` default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
 
       // Which deterministic opponent; 0 = built-in.
       io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
 
-      // Playing style: aggressive (the default) or plain, each with its own ladder.
+      // Playing style: aggressive (the default) or plain, each with
+      // its own ladder.
       io.out("option name Aggressive type check default true");
 
       io.out("uciok");
@@ -1452,13 +1547,21 @@ function uciCommand(session: Session, line: string, io: Io): Session {
         return { ...session, chess960: value.toLowerCase() === "true" };
       if (name === "skill_level") {
         const level = toInteger(value, SKILL_MAX);
-        return { ...session, skill: skillFor(level, skill.seed, skill.aggressive) };
+        return {
+          ...session, skill: skillFor(level, skill.seed, skill.aggressive),
+        };
       }
-      if (name === "skill_seed")
-        return { ...session, skill: skillFor(skill.level, toInteger(value, 0), skill.aggressive) };
+      if (name === "skill_seed") {
+        const seed = toInteger(value, 0);
+        return {
+          ...session, skill: skillFor(skill.level, seed, skill.aggressive),
+        };
+      }
       if (name === "aggressive") {
         const aggressive = value.toLowerCase() !== "false";
-        return { ...session, skill: skillFor(skill.level, skill.seed, aggressive) };
+        return {
+          ...session, skill: skillFor(skill.level, skill.seed, aggressive),
+        };
       }
       return session; // "hash" and "threads" are accepted and ignored
     }
@@ -1467,15 +1570,20 @@ function uciCommand(session: Session, line: string, io: Io): Session {
       return session;
     case "ucinewgame":
       return { ...session, pos: parseFen(START_FEN) };
-    case "position":
-      return { ...session, pos: parsePosition(tokens.slice(1).join(" "), chess960) };
+    case "position": {
+      const args = tokens.slice(1).join(" ");
+      return { ...session, pos: parsePosition(args, chess960) };
+    }
     case "go": {
-      const result = think(pos, limitsFor(parseGo(tokens), pos.sideToMove, skill.level), skill, {
+      const limits = limitsFor(parseGo(tokens), pos.sideToMove, skill.level);
+      const result = think(pos, limits, skill, {
         now: io.now,
         shouldStop: io.shouldStop,
         onInfo: (info) => io.out(infoLine(info, chess960)),
       });
-      io.out("bestmove " + (result.bestMove !== NO_MOVE ? moveToUci(result.bestMove, chess960) : "0000"));
+      const best = result.bestMove !== NO_MOVE
+        ? moveToUci(result.bestMove, chess960) : "0000";
+      io.out("bestmove " + best);
       return session;
     }
     case "stop":
@@ -1510,7 +1618,8 @@ function parsePosition(spec: string, chess960: boolean): Position {
   const moves = tokens.slice(end + 1);
   return moves.reduce((pos, str) => {
     const move = parseMove(pos, str, chess960);
-    return move !== NO_MOVE ? makeLegalMove(pos, move) : pos; // an unknown move is skipped
+    // An unknown move is skipped.
+    return move !== NO_MOVE ? makeLegalMove(pos, move) : pos;
   }, parseFen(fen));
 }
 
@@ -1553,7 +1662,9 @@ function perft(pos: Position, depth: number): number {
   return count;
 }
 
-function perftDivide(pos: Position, depth: number, chess960: boolean, io: Io): void {
+function perftDivide(
+  pos: Position, depth: number, chess960: boolean, io: Io,
+): void {
   const t0 = io.now();
   let total = 0;
   for (const move of legalMoves(pos)) {
@@ -1562,7 +1673,8 @@ function perftDivide(pos: Position, depth: number, chess960: boolean, io: Io): v
     io.out(`${moveToUci(move, chess960)}: ${count}`);
   }
   const ms = Math.max(1, Math.round(io.now() - t0));
-  io.out(`perft ${depth} nodes ${total} time ${ms} nps ${Math.floor(total * 1000 / ms)}`);
+  const nps = Math.floor(total * 1000 / ms);
+  io.out(`perft ${depth} nodes ${total} time ${ms} nps ${nps}`);
 }
 
 /* ---- Bench: a fixed set of positions to a fixed depth, at the top
@@ -1590,21 +1702,27 @@ function bench(depth: number, io: Io): void {
   for (const fen of BENCH_FENS) {
     const pos = parseFen(fen);
     const t0 = io.now();
-    const { nodes } = think(pos, limitsFor({ depth }, pos.sideToMove, SKILL_MAX), skill, {
+    const limits = limitsFor({ depth }, pos.sideToMove, SKILL_MAX);
+    const { nodes } = think(pos, limits, skill, {
       now: io.now, shouldStop: () => false, onInfo: () => {},
     });
     totalMs += io.now() - t0;
     totalNodes += nodes;
     io.out(`info string ${nodes} nodes  ${fen}`);
   }
-  io.out(`${totalNodes} nodes ${Math.floor(totalNodes * 1000 / Math.max(1, totalMs))} nps`);
+  const nps = Math.floor(totalNodes * 1000 / Math.max(1, totalMs));
+  io.out(`${totalNodes} nodes ${nps} nps`);
 }
 
 /* The "d" command: the board, its FEN, key and evaluation. */
-function printBoard(pos: Position, skill: Skill, chess960: boolean, out: (line: string) => void): void {
+function printBoard(
+  pos: Position, skill: Skill, chess960: boolean,
+  out: (line: string) => void,
+): void {
   for (let rank = 7; rank >= 0; rank--) {
     let row = `${rank + 1} `;
-    for (let file = 0; file < 8; file++) row += " " + PIECE_CHARS[pos.board[makeSquare(file, rank)]];
+    for (let file = 0; file < 8; file++)
+      row += " " + PIECE_CHARS[pos.board[makeSquare(file, rank)]];
     out(row);
   }
   out("   a b c d e f g h");
@@ -1635,7 +1753,10 @@ function printBoard(pos: Position, skill: Skill, chess960: boolean, out: (line: 
 // Just enough of the hosts' APIs for the type checker: Bun, a worker
 // and the page. (Declarations only; they vanish with the types.)
 declare const Bun: { readonly isMainThread: boolean; readonly main: string };
-declare const process: { readonly argv: readonly string[]; exit(code: number): never };
+declare const process: {
+  readonly argv: readonly string[];
+  exit(code: number): never;
+};
 declare const console: { log(line: string): void } & AsyncIterable<string>;
 declare const performance: { now(): number };
 declare const WorkerGlobalScope: abstract new () => object;
@@ -1648,16 +1769,22 @@ declare class Worker {
   postMessage(message: unknown): void;
   onmessage: ((event: { readonly data: string }) => void) | null;
 }
-declare var Pedagog: { uci(line: string): void; setOutput(fn: (line: string) => void): void };
+declare var Pedagog: {
+  uci(line: string): void;
+  setOutput(fn: (line: string) => void): void;
+};
 
 const isBun = typeof Bun !== "undefined";
 const inWorker = isBun ? !Bun.isMainThread
-  : typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+  : typeof WorkerGlobalScope !== "undefined" &&
+    self instanceof WorkerGlobalScope;
 
 if (isBun && Bun.isMainThread) {
   if (process.argv[2] === "bench") {
     // `bun engine.ts bench [depth]`, as OpenBench runs it.
-    const io: Io = { out: (line) => console.log(line), now, shouldStop: () => false };
+    const io: Io = {
+      out: (line) => console.log(line), now, shouldStop: () => false,
+    };
     uciCommand(newSession(), "bench " + (process.argv[3] ?? ""), io);
     process.exit(0);
   }
@@ -1687,7 +1814,8 @@ if (isBun && Bun.isMainThread) {
 } else if (inWorker) {
   // Until the main thread's shared flag arrives, a flag of our own
   // that is never set.
-  let session = newSession(), stopFlag: Int32Array = new Int32Array(new SharedArrayBuffer(4));
+  let session = newSession();
+  let stopFlag: Int32Array = new Int32Array(new SharedArrayBuffer(4));
   const io: Io = {
     out: (line) => self.postMessage(line),
     now,

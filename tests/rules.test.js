@@ -229,3 +229,13 @@ test("the Aggressive option chooses the style and its ladder", () => {
   e.command("go depth 3");
   expect(e.output.at(-1)).toBe("bestmove d1d8");
 });
+
+// engine.ts is read on phones, so no line may be wider than 80 columns.
+test("engine.ts lines fit in 80 columns", async () => {
+  const path = new URL("../engine.ts", import.meta.url);
+  const lines = (await Bun.file(path).text()).split(/\r?\n/);
+  const wide = lines
+    .map((line, i) => ({ line: i + 1, width: line.length }))
+    .filter(({ width }) => width > 80);
+  expect(wide).toEqual([]);
+});

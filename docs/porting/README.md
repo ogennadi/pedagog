@@ -49,10 +49,10 @@ standard library), while keeping the engine's structure, algorithms and domain n
 6. Comments only where they explain; keep engine.ts's teaching comments.
 
 ## Report (engine-api.html, then PDF)
-- Same CSS/structure as `docs\porting\report-template.html`: intro, "Domain names" section
-  sorted alphabetically, types sorted alphabetically (not grouped), then functions, each with
-  a domain-named signature in the target language, a short description, and a grey
-  "stored as" line (CSS class `.s`) wherever the concrete representation matters.
+- Same CSS/structure as `docs\porting\report-template.html`: intro, types sorted
+  alphabetically (not grouped), then functions, each with a domain-named signature in the
+  target language (the declared name in `<b>`, so the list scans), a short description,
+  and a grey "stored as" line (CSS class `.s`) wherever the concrete representation matters.
 - For classes/records/structs show their fields/properties.
 - Describe the code as it IS (no "was"/history/proposal language).
 - State which domain names are real types in the code and which exist only in the report.
