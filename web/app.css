@@ -91,8 +91,6 @@ button:disabled, .button[aria-disabled="true"] { opacity: .5; pointer-events: no
 .buttons { gap: .5rem; }
 
 .start-fen { font-family: ui-monospace, monospace; font-size: .75rem; color: var(--muted); word-break: break-all; }
-.mystery { background: var(--panel); border-radius: .5rem; padding: .6rem .75rem; display: flex; flex-direction: column; gap: .5rem; }
-.mystery-log { color: var(--muted); font-size: .85rem; }
 
 .moves-box { background: var(--panel); border-radius: .5rem; padding: .5rem .75rem; max-height: 14rem; overflow: auto; }
 @media (min-width: 900px) { .moves-box { max-height: calc(var(--board) - 16rem); min-height: 8rem; } }

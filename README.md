@@ -5,10 +5,7 @@
 **The engine is one file, [`engine.ts`](engine.ts): read it top to bottom.**
 
 Pedagog is a small, educational chess engine written in TypeScript. It speaks
-UCI and runs under Bun or in the browser. By default it plays an attacking
-style: its pieces crowd the enemy king, it gives up material for the attack,
-and it likes to give check. A plain reference style, at the same strength per
-level, is one option away. The offline-friendly web app supports human-vs-bot
+UCI and runs under Bun or in the browser. The offline-friendly web app supports human-vs-bot
 and bot-vs-bot play, standard chess and Chess960, and a built-in opening book.
 
 [Play Pedagog in your browser](https://oge.nnadi.org/64/pedagog/).
@@ -68,9 +65,8 @@ be read on its own. Positions are never changed: `makeMove` returns a new one.
 | Move generation | Pseudo-legal moves, with legality checked by making each move (copy/make); standard chess and Chess960. |
 | Search | Single-threaded negamax alpha-beta with iterative deepening; the previous iteration's best move first, then captures by MVV-LVA; a quiescence search of at most four captures past each leaf. |
 | Evaluation | Material and formula-based piece-square tables, tapered between middlegame and endgame; recomputed at each leaf. |
-| Playing style | Aggressive (default): a bonus for pieces near the enemy king, middlegame material counted at a quarter of its value, and a root bonus for checking moves. Plain: none of these. |
 | Position hashing | Zobrist hashing for repetition detection and deterministic skill-level variation, not a transposition table. |
-| Playing strength | Ten skill levels, ~100 Elo apart up to about Maia-1900, each with a depth limit, deliberate misjudgments, and reduced move vision; each style has its own calibrated ladder. |
+| Playing strength | Ten skill levels, ~100 Elo apart up to about Maia-1900, each with a depth limit, deliberate misjudgments, and reduced move vision. |
 
 **Deliberately omitted:** transposition tables, principal variation search
 (PVS), aspiration windows, null-move and reverse-futility pruning, late move
@@ -80,15 +76,9 @@ The evaluation uses neither PeSTO tables nor a neural network. These choices
 keep the engine small and educational; see the
 [COLOPHON](docs/COLOPHON.md#what-was-deliberately-left-out) for the historical
 measurements behind the search simplifications. Quiescence search and MVV-LVA,
-once left out, are back: the aggressive style needs them to calculate its
-sacrifices, and both styles use them.
+once left out, are back.
 
-The browser app supplies an opening book; the standalone engine has none. In
-the app, choose **Pedagog** (aggressive), **Reference** (plain) or **Mystery**
-(a hidden coin flip between the two) at any of the ten levels. After a Mystery
-game, guess which style it was (or say you don't know); the answer is then
-revealed and the verdict kept in a local log, so the style can be judged blind
-over many games.
+The browser app supplies an opening book; the standalone engine has none.
 
 The gear in the setup panel opens the settings page: light or dark appearance, board
 colours, and any of 38 piece sets (35 from Lichess), shown side by side on one page.
@@ -105,7 +95,6 @@ Send `uci` to list the engine's options, and configure them with
 | `UCI_Chess960` | `false` | `true`, `false` | Enables Chess960 castling notation (king moves to the rook's square). Supply the starting position with `position fen`. |
 | `Skill_Level` | `10` | `1`–`10` | Sets playing strength: 1 picks a random legal move (taking mate in one when available); 2–10 are ~100 Elo apart, from about 945 to about Maia-1900 (1755) on the Lichess classical scale. Every level is depth-limited, so it plays the same on any machine and answers `go depth`/`go infinite` quickly. |
 | `Skill_Seed` | `0` | `0`–`2147483647` | Selects a deterministic weakened opponent; 0 uses the built-in seed. |
-| `Aggressive` | `true` | `true`, `false` | Chooses the playing style: attacking (`true`) or the plain reference style (`false`). Each has its own ladder, so a level is about equally strong in either. |
 
 For example, after starting the engine with `bun run start`, send:
 
@@ -113,7 +102,6 @@ For example, after starting the engine with `bun run start`, send:
 uci
 setoption name Skill_Level value 5
 setoption name Skill_Seed value 42
-setoption name Aggressive value true
 isready
 position startpos
 go movetime 1000

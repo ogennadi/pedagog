@@ -20,16 +20,12 @@
 
    It is deliberately a base engine: iterative deepening, alpha-beta
    with simple move ordering and a short quiescence search, and a
-   plain piece-square evaluation, and nothing else. It has two
-   playing styles (the Aggressive option): an attacking one, on by
-   default, that gathers its pieces around the enemy king, gives up
-   material readily and likes to give check; and a plain reference
-   style. Skill_Level picks one of ten levels, from a random mover to
-   about Maia-1900 (1755 on the Lichess classical scale), weakened
-   the way Gaia does it: the engine looks less far ahead, misjudges
-   some positions on purpose, and overlooks some moves entirely. Each
-   style has its own ladder, so a level is equally strong in either
-   (see docs/COLOPHON.md for the measurements).
+   plain piece-square evaluation, and nothing else. Skill_Level
+   picks one of ten levels, from a random mover to about Maia-1900
+   (1755 on the Lichess classical scale), weakened the way Gaia does
+   it: the engine looks less far ahead, misjudges some positions on
+   purpose, and overlooks some moves entirely (see docs/COLOPHON.md
+   for the measurements).
 
    HOW TO READ IT
    Every function names what it needs in its parameters and hands
@@ -50,8 +46,8 @@
    -----------------
    S0  Constants           Pieces, squares, board layout, moves
    S1  Search              Iterative deepening, alpha-beta, ordering
-   S2  Skill Levels        Styles, depth ceiling, blunders, vision
-   S3  Evaluation          A naive piece-square evaluation, styled
+   S2  Skill Levels        Depth ceiling, blunders, vision
+   S3  Evaluation          A naive piece-square evaluation
    S4  Chess Rules         Position, copy/make, draws, moves, attacks
    S5  Zobrist Hashing     Position keys for repetition detection
    S6  UCI                 Sessions, options, bench, perft, I/O
@@ -345,12 +341,11 @@ class Search {
      remains of the previous depth's best line along this path (or
      NO_LINE): its first move is tried first, as it is likely the best
      again. makeMove() returns null for a move that leaves our king in
-     check. A mate score is exact, so it keeps no bias. With no legal
-     move, the position is checkmate or stalemate.
+     check. With no legal move, the position is checkmate or
+     stalemate.
 
-     The skill may overlook a move (overlooks()) or favour a check
-     (checkBias()). If it overlooks every legal move, it judges the
-     position as it stands. */
+     The skill may overlook a move (overlooks()). If it overlooks
+     every legal move, it judges the position as it stands. */
   search(
     pos: Position, alpha: Score, beta: Score,
     depth: number, ply: number, hint: Pv,
@@ -373,14 +368,12 @@ class Search {
       if (next === null) continue;
       legalMoveCount++;
       if (this.overlooks(next, move, ply)) continue;
-      const bias = this.checkBias(next, ply);
       const childHint = move === hint[0] ? hint.slice(1) : NO_LINE;
-      const child = this.search(next, bias - beta, bias - raisedAlpha,
+      const child = this.search(next, -beta, -raisedAlpha,
         depth - 1, ply + 1, childHint);
       if (this.stopped) return STOPPED;
 
-      const score = isMateScore(child.score)
-        ? -child.score : bias - child.score;
+      const score = -child.score;
       if (score > bestScore) {
         bestScore = score;
         if (score > raisedAlpha) {
@@ -438,13 +431,6 @@ class Search {
     return ply === 0
       ? this.unseen.includes(move)
       : !seesMove(next, this.skill, move, ply);
-  }
-
-  /* At the root the style may favour checks: a move into `next` that
-     gives check counts this much better, so the child's window is
-     shifted by the same amount. */
-  checkBias(next: Position, ply: number): Score {
-    return ply === 0 && inCheck(next) ? this.skill.checkBias : 0;
   }
 
   /* Count a node and say whether to stop. The limits are checked
@@ -588,10 +574,10 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
    the same position the same way every time: stable blind spots, not
    a tremor. Level 1 is apart: it plays a random legal move, but
    always mates in one when it can. Levels 2..SKILL_MAX come from
-   the style's ladder below (LADDER or AGGRESSIVE_LADDER); their
-   ratings were measured against Maia and are recorded in docs/COLOPHON.md.
+   the ladder below; their ratings were measured against Maia and
+   are recorded in docs/COLOPHON.md.
 
-   A skill is a frozen value made by skillFor(level, seed, aggressive); the
+   A skill is a frozen value made by skillFor(level, seed); the
    functions below take it as an argument.
 */
 
@@ -628,9 +614,8 @@ const rung = (depth: number, deeperPermille: number, blunderWindow: Score,
    evenly spaced about 100 Elo apart. The ratings are on the Lichess
    classical scale: Maia-1900's bot (maia9) was rated 1755 there, and
    the fit is anchored on it (see docs/COLOPHON.md). Every level is a depth,
-   never a time budget, so it plays the same on any machine. This is the
-   plain style's ladder (UCI option Aggressive off). Level n is at
-   index n - 1; level 1, the random mover, ignores its knobs. */
+   never a time budget, so it plays the same on any machine. Level n
+   is at index n - 1; level 1, the random mover, ignores its knobs. */
 const LADDER: readonly Rung[] = [
   //   depth  deeper  blunder  b/1000  vision           target  measured
   rung(0,       0,       0,      0,       0),    //  1    ~170
@@ -645,65 +630,23 @@ const LADDER: readonly Rung[] = [
   rung(3,      60,     330,     19,     985),    // 10    1755     1795
 ];
 
-/* The aggressive style's ladder (UCI option Aggressive on, the default),
-   to the same targets. Its style costs strength (at equal knobs the
-   plain style wins by about 200 Elo), so each rung looks further ahead
-   and errs less than the plain rung with the same number. */
-const AGGRESSIVE_LADDER: readonly Rung[] = [
-  //   depth  deeper  blunder  b/1000  vision           target  measured
-  rung(0,       0,       0,      0,       0),    //  1    ~170
-  rung(1,     200,     720,     68,     640),    //  2     945      990
-  rung(1,     550,     655,     62,     705),    //  3    1046     1077
-  rung(2,       5,     575,     52,     785),    //  4    1148     1170
-  rung(2,      90,     475,     44,     868),    //  5    1249     1287
-  rung(2,     300,     425,     37,     925),    //  6    1350     1377
-  rung(2,     570,     393,     28,     956),    //  7    1451     1474
-  rung(2,     950,     355,     22,     975),    //  8    1553     1557
-  rung(3,     640,     260,     14,     996),    //  9    1654     1649
-  rung(4,     420,       0,      0,    FULL_VISION),   // 10  1755     1771
-];
-
-/* The two playing styles. The aggressive one is eager to attack:
-     kingAttack  middlegame bonus, per square, for each knight, bishop,
-                 rook or queen standing closer to the enemy king (queens
-                 count twice), so the pieces gather around the king;
-     materialMg  middlegame material counts this many permille of its
-                 value, so giving it up for an attack costs less;
-     checkBias   at the root, a move that gives check counts this many
-                 centipawns better, so it is chosen over equal moves.
-   The plain style turns all of that off. evaluate() applies the
-   first two. */
-interface Style {
-  readonly kingAttack: Score;
-  readonly materialMg: number;
-  readonly checkBias: Score;
-}
-
-const AGGRESSIVE: Style = { kingAttack: 60, materialMg: 250, checkBias: 60 };
-const PLAIN: Style = { kingAttack: 0, materialMg: 1000, checkBias: 0 };
-
-/** One seeded opponent: a level's rung combined with a style. */
-interface Skill extends Rung, Style {
+/** One seeded opponent: a level's rung. */
+interface Skill extends Rung {
   readonly level: number;
   readonly seed: number;
-  readonly aggressive: boolean;
   readonly seedKey: number;        // the seed, hashed
 }
 
-/* The skill for a Skill_Level (clamped to 1..SKILL_MAX), a Skill_Seed
-   and the Aggressive option: its style, and its rung of that style's
-   ladder. The seed picks which weakened opponent a level is; 0 means
-   the built-in one, so an engine nobody configures still plays the same
-   game twice. */
-function skillFor(level: number, seed: number, aggressive: boolean): Skill {
+/* The skill for a Skill_Level (clamped to 1..SKILL_MAX) and a
+   Skill_Seed: its rung of the ladder. The seed picks which weakened
+   opponent a level is; 0 means the built-in one, so an engine nobody
+   configures still plays the same game twice. */
+function skillFor(level: number, seed: number): Skill {
   const clamped = Math.min(SKILL_MAX, Math.max(1, Math.trunc(level)));
-  const ladder = aggressive ? AGGRESSIVE_LADDER : LADDER;
   return Object.freeze({
-    ...ladder[clamped - 1],
-    ...(aggressive ? AGGRESSIVE : PLAIN),
+    ...LADDER[clamped - 1],
     level: clamped,
     seed,
-    aggressive,
     seedKey: mix32(seed === 0 ? BUILT_IN_SEED : seed),
   });
 }
@@ -716,11 +659,10 @@ function depthFor(pos: Position, skill: Skill): number {
   return skill.depth + (hash % 1000 < skill.deeperPermille ? 1 : 0);
 }
 
-/* What this skill makes of `pos`: the evaluation in its style and,
-   now and then, a misjudgement. This is what the search sees at a
-   leaf. */
+/* What this skill makes of `pos`: the evaluation and, now and then,
+   a misjudgement. This is what the search sees at a leaf. */
 function judge(pos: Position, skill: Skill): Score {
-  return evaluate(pos, skill) + blunder(pos, skill);
+  return evaluate(pos) + blunder(pos, skill);
 }
 
 /* The occasional misjudgement, added to the evaluation of the rung's
@@ -794,10 +736,8 @@ function mix32(x: number): number {
    rooks like the seventh rank, the king hides in the middlegame
    and comes out in the endgame.
 
-   evaluate(pos, style) simply walks the board and adds up material
-   and placement, and the playing style's two terms (see Style): a
-   discount on middlegame material and a bonus for pieces near the
-   enemy king. (Real engines keep these sums up to date as each move
+   evaluate(pos) simply walks the board and adds up material and
+   placement. (Real engines keep these sums up to date as each move
    is made, which is faster but spreads the evaluation over more
    than one function.) The skill level's occasional blunder is added
    separately, by judge().
@@ -862,30 +802,10 @@ function pieceSquareTables(): readonly [mg: PsqTable, eg: PsqTable] {
 
 const [PSQ_MG, PSQ_EG] = pieceSquareTables();
 
-/* King moves between two squares:
-   KING_DISTANCE[index64(a) * 64 + index64(b)]. */
-function kingDistances(): Int8Array {
-  const table = new Int8Array(64 * 64);
-  for (const a of SQUARES) {
-    for (const b of SQUARES) {
-      const files = Math.abs(fileOf(a) - fileOf(b));
-      const ranks = Math.abs(rankOf(a) - rankOf(b));
-      table[index64(a) * 64 + index64(b)] = Math.max(files, ranks);
-    }
-  }
-  return table;
-}
-
-const KING_DISTANCE = kingDistances();
-
-/* Static evaluation of `pos` in `style`, in centipawns for the side
-   to move. Middlegame material counts style.materialMg permille of its
-   value, and each knight, bishop, rook or queen earns style.kingAttack
-   in the middlegame for every square it stands closer to the enemy
-   king than the far side of the board (queens count twice). The
-   score tapers from the middlegame sum to the endgame sum as
-   material (the phase) leaves the board. */
-function evaluate(pos: Position, style: Style): Score {
+/* Static evaluation of `pos`, in centipawns for the side to move:
+   material and placement, tapered from the middlegame sum to the
+   endgame sum as material (the phase) leaves the board. */
+function evaluate(pos: Position): Score {
   const board = pos.board;
   let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
   for (const sq of SQUARES) {
@@ -893,16 +813,9 @@ function evaluate(pos: Position, style: Style): Score {
     if (piece === EMPTY) continue;
     const pieceType = typeOf(piece), sign = colourOf(piece) === WHITE ? 1 : -1;
     const at = piece * 64 + index64(sq);
-    const material = Math.floor(MG_VALUE[pieceType] * style.materialMg / 1000);
-    mg += sign * material + PSQ_MG[at];
+    mg += sign * MG_VALUE[pieceType] + PSQ_MG[at];
     eg += sign * EG_VALUE[pieceType] + PSQ_EG[at];
     phase += PHASE_INC[pieceType];
-    if (pieceType >= KNIGHT && pieceType <= QUEEN) {
-      const enemyKing = pos.kingSq[opponent(colourOf(piece))];
-      const distance = KING_DISTANCE[index64(sq) * 64 + index64(enemyKing)];
-      const weight = pieceType === QUEEN ? 2 : 1;
-      mg += sign * (7 - distance) * weight * style.kingAttack;
-    }
   }
   const tapered = Math.min(phase, PHASE_MAX);
   const score =
@@ -1498,7 +1411,7 @@ const isGoNumber = (word: string): word is GoNumber =>
 function newSession(): Session {
   return {
     pos: parseFen(START_FEN),
-    skill: skillFor(SKILL_MAX, 0, true),
+    skill: skillFor(SKILL_MAX, 0),
     chess960: false,
   };
 }
@@ -1510,8 +1423,6 @@ function newSession(): Session {
      UCI_Chess960  castling is written king-takes-rook
      Skill_Level   1 = random mover, SKILL_MAX = strongest
      Skill_Seed    which deterministic opponent; 0 = built-in
-     Aggressive    playing style: aggressive (the default) or plain,
-                   each with its own ladder
    "setoption" ignores Hash and Threads. "stop" is left to the I/O
    layer, which handles it while searching; "quit" is echoed back so
    the I/O layer knows the queue is drained. */
@@ -1528,7 +1439,6 @@ function uciCommand(session: Session, line: string, io: Io): Session {
       io.out("option name Skill_Level type spin" +
         ` default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
       io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
-      io.out("option name Aggressive type check default true");
       io.out("uciok");
       return session;
     case "setoption": {
@@ -1542,21 +1452,11 @@ function uciCommand(session: Session, line: string, io: Io): Session {
         return { ...session, chess960: value.toLowerCase() === "true" };
       if (name === "skill_level") {
         const level = toInteger(value, SKILL_MAX);
-        return {
-          ...session, skill: skillFor(level, skill.seed, skill.aggressive),
-        };
+        return { ...session, skill: skillFor(level, skill.seed) };
       }
       if (name === "skill_seed") {
         const seed = toInteger(value, 0);
-        return {
-          ...session, skill: skillFor(skill.level, seed, skill.aggressive),
-        };
-      }
-      if (name === "aggressive") {
-        const aggressive = value.toLowerCase() !== "false";
-        return {
-          ...session, skill: skillFor(skill.level, skill.seed, aggressive),
-        };
+        return { ...session, skill: skillFor(skill.level, seed) };
       }
       return session;
     }
@@ -1692,7 +1592,7 @@ const BENCH_FENS: readonly string[] = [
 ];
 
 function bench(depth: number, io: Io): void {
-  const skill = skillFor(SKILL_MAX, 0, true);
+  const skill = skillFor(SKILL_MAX, 0);
   let totalNodes = 0, totalMs = 0;
   for (const fen of BENCH_FENS) {
     const pos = parseFen(fen);

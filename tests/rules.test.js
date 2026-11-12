@@ -216,15 +216,10 @@ test("UCI session: options and positions carry over between commands", () => {
   expect(e.output.find((line) => line.startsWith("fen "))).toBe("fen r3k2r/8/8/8/8/8/8/R4RK1 b kq - 1 1");
 });
 
-test("the Aggressive option chooses the style and its ladder", () => {
+test("the engine plays one plain style with no Aggressive option", () => {
   const e = engine();
   e.command("uci");
-  expect(e.output).toContain("option name Aggressive type check default true");
-  expect(e.read("skillFor(SKILL_MAX, 0, true).checkBias")).toBeGreaterThan(0);
-  expect(e.read("skillFor(SKILL_MAX, 0, false).checkBias")).toBe(0);
-  expect(e.read("skillFor(5, 0, false).kingAttack")).toBe(0);
-  expect(e.read("skillFor(5, 0, true).kingAttack")).toBeGreaterThan(0);
-  e.command("setoption name Aggressive value false");
+  expect(e.output.some((line) => line.includes("Aggressive"))).toBe(false);
   e.command("position fen 6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1");
   e.command("go depth 3");
   expect(e.output.at(-1)).toBe("bestmove d1d8");
