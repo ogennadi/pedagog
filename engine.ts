@@ -283,8 +283,9 @@ const STOPPED: Line = Object.freeze({ score: 0, pv: NO_LINE });
 /* Choose a move for `pos` within `limits` (from limitsFor()), playing
    as `skill` (from skillFor()). `io` supplies the clock, `now()`; a
    stop request, `shouldStop()`; and `onInfo(result)`, called after
-   every finished depth. Returns the last finished depth's Result;
-   bestMove is NO_MOVE when there is no legal move. */
+   every finished depth. Returns the last finished depth's Result (a
+   depth cut short by a stop is thrown away); bestMove is NO_MOVE when
+   there is no legal move. */
 function think(
   pos: Position, limits: Limits, skill: Skill, io: SearchIo,
 ): Result {
@@ -316,7 +317,7 @@ function think(
 
   for (let depth = 1; depth <= maxDepth; depth++) {
     const { score, pv } = search.root(pos, depth, best.pv);
-    if (search.stopped) break; // an interrupted depth cannot replace `best`
+    if (search.stopped) break;
     best = {
       bestMove: pv[0], depth, score, nodes: search.nodes,
       elapsed: Math.round(io.now() - startTime), pv,
@@ -356,17 +357,26 @@ class Search {
     return this.search(pos, -INF, INF, depth, 0, hint);
   }
 
-  /* Negamax to a fixed depth: terminate, try moves, keep the best line,
-     and stop at a beta cutoff. `hint` is what remains of the previous
-     depth's best line along this path (or NO_LINE): its first move is
-     tried first, as it is likely the best again. */
+  /* Negamax to a fixed depth: terminate, try moves, keep the best line
+     (the best move, then its reply line), and stop at a beta cutoff,
+     as the opponent would never allow that line. `hint` is what
+     remains of the previous depth's best line along this path (or
+     NO_LINE): its first move is tried first, as it is likely the best
+     again. makeMove() returns null for a move that leaves our king in
+     check. A mate score is exact, so it keeps no bias. With no legal
+     move, the position is checkmate or stalemate.
+
+     The skill may overlook a move (overlooks()) or favour a check
+     (checkBias()). If it overlooks every legal move, it judges the
+     position as it stands. */
   search(
     pos: Position, alpha: Score, beta: Score,
     depth: number, ply: number, hint: Pv,
   ): Line {
     if (this.countNodeAndCheckStop()) return STOPPED;
     if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
-    if (depth === 0 || ply >= MAX_PLY - 1) // a leaf
+    const atLeaf = depth === 0 || ply >= MAX_PLY - 1;
+    if (atLeaf)
       return {
         score: this.qsearch(pos, alpha, beta, ply, QSEARCH_PLIES),
         pv: NO_LINE,
@@ -378,31 +388,31 @@ class Search {
     const pvMove = hint[0] ?? NO_MOVE;
     for (const move of orderMoves(pos, generateMoves(pos), pvMove)) {
       const next = makeMove(pos, move);
-      if (next === null) continue;              // leaves our king in check
+      if (next === null) continue;
       legalMoveCount++;
-      if (this.overlooks(next, move, ply)) continue;                 // skill
-      const bias = this.checkBias(next, ply);                         // skill
+      if (this.overlooks(next, move, ply)) continue;
+      const bias = this.checkBias(next, ply);
       const childHint = move === hint[0] ? hint.slice(1) : NO_LINE;
       const child = this.search(next, bias - beta, bias - raisedAlpha,
         depth - 1, ply + 1, childHint);
       if (this.stopped) return STOPPED;
 
-      // A mate score is exact and keeps no bias.
       const score = isMateScore(child.score)
         ? -child.score : bias - child.score;
       if (score > bestScore) {
         bestScore = score;
         if (score > raisedAlpha) {
           raisedAlpha = score;
-          pv = [move, ...child.pv]; // this move, then the best reply line
-          if (raisedAlpha >= beta) break; // opponent would never allow it
+          pv = [move, ...child.pv];
+          if (raisedAlpha >= beta) break;
         }
       }
     }
 
-    if (legalMoveCount === 0) // checkmate or stalemate
+    if (legalMoveCount === 0)
       return { score: inCheck(pos) ? -MATE + ply : DRAW, pv: NO_LINE };
-    if (bestScore === -INF) // skill: overlooked every legal move
+    const overlookedAll = bestScore === -INF;
+    if (overlookedAll)
       return { score: judge(pos, this.skill), pv: NO_LINE };
     return { score: bestScore, pv };
   }
@@ -535,6 +545,7 @@ function captureScore(pos: Position, move: Move): number {
    so that a fast game is never lost on time. */
 const NO_TIME_LIMIT: Millis = 2 ** 31 - 1; // about 25 days
 const MOVE_OVERHEAD: Millis = 20;
+const TIME_RESERVE: Millis = 1000;   // the first second is never spent
 
 function limitsFor(go: Go, side: Colour, level: number): Limits {
   const untimed: Limits = {
@@ -550,7 +561,7 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
   if (time === undefined) return untimed;
   const inc = (side === WHITE ? go.winc : go.binc) ?? 0;
   const movesToGo = go.movestogo || 30;
-  const usable = Math.max(0, time - 1000); // the first second is the reserve
+  const usable = Math.max(0, time - TIME_RESERVE);
   const incShare = Math.floor(3 * inc / 4);
   const softMs = Math.max(1,
     Math.floor(usable / movesToGo) + incShare - MOVE_OVERHEAD);
@@ -820,27 +831,28 @@ const PHASE_INC: readonly number[] = [0, 0, 1, 1, 2, 4, 0];
 const PHASE_MAX = 24;
 
 /* Bonus for a white piece of `pieceType` on file f, rank r (0 = rank
-   1), as [middlegame, endgame]. */
+   1), as [middlegame, endgame]. `centre` runs from 0 on the rim to 3
+   on the four centre squares. */
 function psqBonus(
   pieceType: PieceType, f: File, r: Rank,
 ): readonly [mg: Score, eg: Score] {
-  // 0 on the rim .. 3 in the four centre squares
   const fromCentre = Math.max(Math.abs(2 * f - 7), Math.abs(2 * r - 7));
   const centre = 3 - Math.floor((fromCentre - 1) / 2);
-  const home = r === 0 ? -10 : 0; // nudge to develop
+  const undeveloped = r === 0 ? -10 : 0;
   switch (pieceType) {
     case PAWN: {
       const centrePawn = (f === 3 || f === 4) && (r === 3 || r === 4);
       return [(r - 1) * 3 + (centrePawn ? 15 : 0), (r - 1) * 12];
     }
-    case KNIGHT: return [centre * 12 - 24 + home, centre * 12 - 24];
-    case BISHOP: return [centre * 6 - 12 + home, centre * 6 - 12];
+    case KNIGHT: return [centre * 12 - 24 + undeveloped, centre * 12 - 24];
+    case BISHOP: return [centre * 6 - 12 + undeveloped, centre * 6 - 12];
     case ROOK: {
       const seventh = r === 6 ? 15 : 0;
       return [(f === 3 || f === 4 ? 5 : 0) + seventh, seventh];
     }
     case QUEEN: return [centre * 3 - 6, centre * 5 - 10];
-    default: { // KING
+    case KING:
+    default: {
       const shelter = f <= 2 || f >= 5 ? 20 : -10;
       return [-Math.min(r, 3) * 25 + shelter, centre * 15 - 30];
     }
@@ -888,7 +900,9 @@ const KING_DISTANCE = kingDistances();
    to move. Middlegame material counts style.materialMg permille of its
    value, and each knight, bishop, rook or queen earns style.kingAttack
    in the middlegame for every square it stands closer to the enemy
-   king than the far side of the board (queens count twice). */
+   king than the far side of the board (queens count twice). The
+   score tapers from the middlegame sum to the endgame sum as
+   material (the phase) leaves the board. */
 function evaluate(pos: Position, style: Style): Score {
   const board = pos.board;
   let mg = 0, eg = 0, phase = 0; // mg and eg are white minus black
@@ -908,7 +922,6 @@ function evaluate(pos: Position, style: Style): Score {
       mg += sign * (7 - distance) * weight * style.kingAttack;
     }
   }
-  // Taper from middlegame to endgame as material leaves the board.
   const tapered = Math.min(phase, PHASE_MAX);
   const score =
     Math.trunc((mg * tapered + eg * (PHASE_MAX - tapered)) / PHASE_MAX);
@@ -1103,12 +1116,12 @@ function inCheck(pos: Position): boolean {
 
 /* Draw by the fifty-move rule, by repetition (once is enough inside
    the search), or by insufficient material (bare kings, or a single
-   minor piece). */
+   minor piece). Repetitions are looked for among earlier positions
+   with the same side to move, 2, 4, 6... plies back, but not past the
+   last capture or pawn move, nor past the first position (gamePly
+   plies back). */
 function isDraw(pos: Position): boolean {
   if (pos.halfmoveClock >= 100) return true;
-  // Earlier positions with the same side to move: 2, 4, 6... plies
-  // back, but not past the last capture or pawn move, nor past the
-  // first position (gamePly plies back).
   const reach = Math.min(pos.halfmoveClock, pos.gamePly);
   for (let back = 2, earlier = pos; back <= reach; back += 2) {
     earlier = earlier.previous!.previous!;
@@ -1301,7 +1314,13 @@ const isSlider = (pieceType: PieceType): boolean =>
   pieceType >= BISHOP && pieceType <= QUEEN;
 
 /* The pseudo-legal moves of pos for the side to move, as a new array.
-   King safety is checked by makeMove(). */
+   King safety is checked by makeMove().
+
+   Castling (standard and Chess960 alike): every square the king and
+   rook pass over or land on must be empty, apart from the two of
+   them, and the king may not start in, pass through or end in check.
+   All four squares are on one rank, so the squares between them are
+   consecutive numbers. */
 function generateMoves(pos: Position): Move[] {
   const board = pos.board, moves: Move[] = [];
   const us = pos.sideToMove, them = opponent(us);
@@ -1353,11 +1372,6 @@ function generateMoves(pos: Position): Move[] {
     }
   }
 
-  // Castling (standard and Chess960 alike): every square the king and
-  // rook pass over or land on must be empty, apart from the two of
-  // them, and the king may not start in, pass through or end in check.
-  // All four squares are on one rank, so the squares between them are
-  // consecutive numbers.
   for (const right of [castlingRight(us, true), castlingRight(us, false)]) {
     if (!hasRight(pos.castlingRights, right)) continue;
     const kFrom = pos.kingSq[us], rFrom = pos.castle.castlingRookSquare[right];
@@ -1507,6 +1521,18 @@ function newSession(): Session {
   };
 }
 
+/* Carry out one UCI command, and return the session it leaves.
+   "uci" lists the options:
+     Hash          accepted, no effect: there is no transposition table
+     Threads       accepted for OpenBench; always single-threaded
+     UCI_Chess960  castling is written king-takes-rook
+     Skill_Level   1 = random mover, SKILL_MAX = strongest
+     Skill_Seed    which deterministic opponent; 0 = built-in
+     Aggressive    playing style: aggressive (the default) or plain,
+                   each with its own ladder
+   "setoption" ignores Hash and Threads. "stop" is left to the I/O
+   layer, which handles it while searching; "quit" is echoed back so
+   the I/O layer knows the queue is drained. */
 function uciCommand(session: Session, line: string, io: Io): Session {
   const tokens = words(line);
   const { pos, skill, chess960 } = session;
@@ -1514,27 +1540,13 @@ function uciCommand(session: Session, line: string, io: Io): Session {
     case "uci":
       io.out(`id name ${NAME} ${VERSION}`);
       io.out("id author Copilot (Claude Fable 5.1)");
-      // ---- UCI options ------------------------------------------------
-      // Accepted, no effect: there is no transposition table yet.
       io.out("option name Hash type spin default 16 min 1 max 1024");
-
-      // Accepted for OpenBench; always single-threaded.
       io.out("option name Threads type spin default 1 min 1 max 1");
-
-      // Castling notation: king-takes-rook.
       io.out("option name UCI_Chess960 type check default false");
-
-      // 1 = random mover, SKILL_MAX = strongest
       io.out("option name Skill_Level type spin" +
         ` default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
-
-      // Which deterministic opponent; 0 = built-in.
       io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
-
-      // Playing style: aggressive (the default) or plain, each with
-      // its own ladder.
       io.out("option name Aggressive type check default true");
-
       io.out("uciok");
       return session;
     case "setoption": {
@@ -1564,7 +1576,7 @@ function uciCommand(session: Session, line: string, io: Io): Session {
           ...session, skill: skillFor(skill.level, skill.seed, aggressive),
         };
       }
-      return session; // "hash" and "threads" are accepted and ignored
+      return session;
     }
     case "isready":
       io.out("readyok");
@@ -1588,9 +1600,9 @@ function uciCommand(session: Session, line: string, io: Io): Session {
       return session;
     }
     case "stop":
-      return session; // handled by the I/O layer while searching
+      return session;
     case "quit":
-      io.out("quit"); // echoed back so the I/O layer knows the queue is drained
+      io.out("quit");
       return session;
     case "bench":
       bench(toInteger(tokens[1], BENCH_DEPTH), io);
@@ -1610,7 +1622,8 @@ function uciCommand(session: Session, line: string, io: Io): Session {
 }
 
 /* A new position from the arguments of a UCI "position" command:
-   "startpos" or "fen <FEN>", optionally followed by "moves ...". */
+   "startpos" or "fen <FEN>", optionally followed by "moves ...".
+   An unknown move is skipped. */
 function parsePosition(spec: string, chess960: boolean): Position {
   const tokens = words(spec);
   const movesAt = tokens.indexOf("moves");
@@ -1619,7 +1632,6 @@ function parsePosition(spec: string, chess960: boolean): Position {
   const moves = tokens.slice(end + 1);
   return moves.reduce((pos, str) => {
     const move = parseMove(pos, str, chess960);
-    // An unknown move is skipped.
     return move !== NO_MOVE ? makeLegalMove(pos, move) : pos;
   }, parseFen(fen));
 }
@@ -1780,9 +1792,19 @@ const inWorker = isBun ? !Bun.isMainThread
   : typeof WorkerGlobalScope !== "undefined" &&
     self instanceof WorkerGlobalScope;
 
+/* Start-up, in one of three hosts:
+   - Bun's main thread. `bun engine.ts bench [depth]` runs the bench,
+     as OpenBench does. Otherwise it reads stdin and passes commands
+     to a worker, but answers "stop", "quit" and (while searching)
+     "isready" itself, so they work mid-search. When stdin closes,
+     the worker finishes its queue, then exits.
+   - The worker, which runs uciCommand(). Until the main thread's
+     shared stop flag arrives, it uses one of its own that is never
+     set.
+   - Anything else (a browser page): drive it by hand through
+     globalThis.Pedagog. */
 if (isBun && Bun.isMainThread) {
   if (process.argv[2] === "bench") {
-    // `bun engine.ts bench [depth]`, as OpenBench runs it.
     const io: Io = {
       out: (line) => console.log(line), now, shouldStop: () => false,
     };
@@ -1810,11 +1832,8 @@ if (isBun && Bun.isMainThread) {
       }
     }
     worker.postMessage("quit");
-    // Stdin closed: let the worker finish its queue, then exit.
   })();
 } else if (inWorker) {
-  // Until the main thread's shared flag arrives, a flag of our own
-  // that is never set.
   let session = newSession();
   let stopFlag: Int32Array = new Int32Array(new SharedArrayBuffer(4));
   const io: Io = {
@@ -1829,7 +1848,6 @@ if (isBun && Bun.isMainThread) {
       stopFlag = data.stopFlag as Int32Array;
   };
 } else {
-  // Browser main thread (or any other host): drive it by hand.
   let session = newSession(), output = (line: string) => console.log(line);
   const io: Io = { out: (line) => output(line), now, shouldStop: () => false };
   globalThis.Pedagog = {
