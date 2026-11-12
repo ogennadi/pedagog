@@ -1,6 +1,6 @@
 /* Service worker: the whole app is cached on first visit so it keeps working offline.
    Requests go to the network first (so updates arrive when online) and fall back to the cache. */
-const CACHE = "pedagog-v4";
+const CACHE = "pedagog-v5";
 const FILES = [
   "./", "index.html", "engine.js", "app.js", "prefs.js", "book.js", "app.css", "manifest.json",
   "config.html", "config.js", "config.css",

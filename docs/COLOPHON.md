@@ -284,7 +284,12 @@ tags), copy PGN. In standard chess bots at levels 2–10 open from
 `web/book.js`, a hundred lines in SAN — 75 mainstream openings (Ruy Lopez to
 Catalan, ECO-tagged) and 25 offbeat ones (King's Gambit, Englund, Grob, …) —
 picking at random among the lines that still match the game; the engine
-itself has no book. Serve it with `bun run web` (or any static host); a
+itself has no book. *(Later replaced: `web/book.js` is now a weighted move
+tree at most six plies deep — wide rather than deep, with rim-pawn lines
+such as 1.h4 … 2.h5 and 1.a4 … 2.a5 for both colours and the odd 1.Na3 — and
+the hundred lines only name the opening. Each game also draws a random
+`Skill_Seed`, written to the PGN as `[SkillSeed]`, so play after the book
+varies from game to game.)* Serve it with `bun run web` (or any static host); a
 service worker caches everything so it keeps working offline and can be
 installed on a phone. **`pedagog-app.html`** is the same app built into one
 self-contained file (`bun run bundle`): browsers refuse ES modules and

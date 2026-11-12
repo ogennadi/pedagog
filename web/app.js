@@ -2,7 +2,7 @@
    Human vs bot or bot vs bot, standard chess or Chess960, offline once loaded. */
 import { Chessground } from "chessground";
 import { Chess, GAME_VARIANT } from "cm-chess/src/Chess.js";
-import { BOOK } from "./book.js";
+import { TREE, OPENINGS, parseTree, bookChildren, pickWeighted, treePaths, plain } from "./book.js";
 import { BOARD_THEMES, loadPrefs, pieceCss, boardCss, applyCss, applyTheme } from "./prefs.js";
 
 const $ = (id) => document.getElementById(id);
@@ -63,11 +63,12 @@ class Engine {
     if (this.worker) this.worker.postMessage(cmd);
     else setTimeout(() => globalThis.Pedagog.uci(cmd), 0);   // let the UI paint before blocking
   }
-  async bestMove({ startFen, moves, level, aggressive, chess960 }) {
+  async bestMove({ startFen, moves, level, aggressive, chess960, seed }) {
     await this.ready;
     this.send(`setoption name UCI_Chess960 value ${chess960}`);
     this.send(`setoption name Aggressive value ${aggressive}`);
     this.send(`setoption name Skill_Level value ${level}`);
+    this.send(`setoption name Skill_Seed value ${seed}`);
     this.send(`position fen ${startFen}${moves.length ? " moves " + moves.join(" ") : ""}`);
     const reply = this.waitFor((l) => l.startsWith("bestmove"));
     this.send("go depth 100");   // every level is depth-bounded and ignores the clock
@@ -89,44 +90,37 @@ function chess960Fen(n) {
   return `${black}/pppppppp/8/8/8/8/PPPPPPPP/${white} w KQkq - 0 1`;
 }
 
-/* ---- Opening book (standard chess only). A line matches when every move played so far is
-   its prefix; "+" and "#" are ignored when comparing. */
-const plain = (san) => san.replace(/[+#]/g, "");
-const bookLines = BOOK.map((o) => ({ ...o, line: o.moves.split(" ") }));
+/* ---- Opening book (standard chess only): a shallow weighted tree for the bots' moves and a
+   list of named lines for the opening name. "+" and "#" are ignored when comparing. */
+const bookTree = parseTree(TREE);
+const namedLines = OPENINGS.map((o) => ({ ...o, line: o.moves.split(" ") }));
 
-function matchingLines(played) {
-  return bookLines.filter((o) => o.line.length >= played.length && played.every((san, i) => plain(san) === plain(o.line[i])));
-}
-
-/* The next book move for the side to move, chosen at random among the lines still in play. */
+/* The next book move for the side to move, chosen by weight among the tree's replies. */
 function bookMove() {
   if (variant !== "standard") return null;
-  const played = game.history().map((m) => m.san);
-  const open = matchingLines(played).filter((o) => o.line.length > played.length);
-  if (open.length === 0) return null;
-  const pick = open[Math.floor(Math.random() * open.length)];
-  return { san: pick.line[played.length], opening: pick };
+  const replies = bookChildren(bookTree, game.history().map((m) => m.san));
+  return replies.length ? pickWeighted(replies, Math.random()).san : null;
 }
 
-/* The name of the longest book line the game has followed so far, if any. */
-function openingName() {
+/* The name of the longest named line the game (optionally with one more move) has followed in full. */
+function openingName(extra = []) {
   if (variant !== "standard") return "";
-  const played = game.history().map((m) => m.san);
-  let best = null;
-  for (const o of bookLines) {
-    if (o.line.length <= played.length && o.line.every((san, i) => plain(san) === plain(played[i])) && (!best || o.line.length > best.line.length)) best = o;
-  }
+  const played = [...game.history().map((m) => m.san), ...extra];
+  const best = namedLines
+    .filter((o) => o.line.length <= played.length && o.line.every((san, i) => plain(san) === plain(played[i])))
+    .reduce((a, o) => (!a || o.line.length > a.line.length ? o : a), null);
   return best ? `${best.name} (${best.eco})` : "";
 }
 
-/* Plays every book line through cm-chess and reports the ones with an illegal move. */
+/* Plays every tree path and named line through cm-chess and reports the ones with an illegal move. */
 function validateBook() {
-  const errors = [];
-  for (const o of bookLines) {
+  const lines = [...treePaths(bookTree).map((line) => ({ name: "tree", line })), ...namedLines];
+  const illegal = (o) => {
     const c = new Chess();
-    for (const san of o.line) if (!c.move(san)) { errors.push(`${o.name}: ${san} after ${c.history().map((m) => m.san).join(" ")}`); break; }
-  }
-  return { lines: bookLines.length, offbeat: bookLines.filter((o) => o.offbeat).length, errors };
+    const bad = o.line.findIndex((san) => !c.move(san));
+    return bad === -1 ? [] : [`${o.name}: ${o.line[bad]} after ${o.line.slice(0, bad).join(" ")}`];
+  };
+  return { paths: lines.length - namedLines.length, named: namedLines.length, errors: lines.flatMap(illegal) };
 }
 
 /* ---- Game state */
@@ -140,6 +134,11 @@ let uciMoves = [];                                // the game so far, in UCI not
 let elapsed = { white: 0, black: 0 }, tickFrom = 0, running = false, paused = false, finished = false;
 let viewPly = null;                               // null = live position, else a ply to display
 let thinking = false, gameId = 0;
+// Each game draws its own Skill_Seed, so the engine's choices after the book vary from game to
+// game; the PGN records it, so a game can be replayed with the same seed.
+let seed = 0;
+const MAX_SEED = 2147483647;
+const newSeed = () => 1 + Math.floor(Math.random() * MAX_SEED);
 let gameDate = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
 let gamePosition = 518;
 
@@ -252,6 +251,7 @@ function pgn() {
   tags.White = playerName("white"); tags.Black = playerName("black");
   tags.Result = finished ? (game.inCheckmate() ? (colourToMove() === "white" ? "0-1" : "1-0") : "1/2-1/2") : "*";
   if (variant === "chess960") tags.Variant = "Chess960"; else delete tags.Variant;
+  tags.SkillSeed = String(seed);
   return game.renderPgn();
 }
 
@@ -290,7 +290,7 @@ function saveSession() {
     game: running || finished ? {
       variant, position: gamePosition, startFen, moves: game.history().map((m) => m.san),
       players, opponent, elapsed: liveElapsed(), paused, orientation: cg.state.orientation,
-      viewPly, date: gameDate,
+      viewPly, date: gameDate, seed,
     } : null,
   };
   try {
@@ -337,7 +337,8 @@ function restoreSession() {
           !saved.elapsed || !["white", "black"].every((c) => Number.isFinite(saved.elapsed[c]) && saved.elapsed[c] >= 0) ||
           typeof saved.paused !== "boolean" || !["white", "black"].includes(saved.orientation) ||
           !(saved.viewPly === null || integer(saved.viewPly, 0, saved.moves.length)) ||
-          typeof saved.date !== "string" || !/^\d{4}\.\d{2}\.\d{2}$/.test(saved.date))
+          typeof saved.date !== "string" || !/^\d{4}\.\d{2}\.\d{2}$/.test(saved.date) ||
+          !(saved.seed === undefined || integer(saved.seed, 0, MAX_SEED)))
         throw new TypeError("Invalid saved game");
       restored = new Chess({ fen: saved.startFen, gameVariant: saved.variant });
       moves = [];
@@ -353,6 +354,7 @@ function restoreSession() {
     game = restored; uciMoves = moves;
     variant = saved.variant; startFen = saved.startFen; gamePosition = saved.position;
     players = saved.players; elapsed = saved.elapsed; gameDate = saved.date;
+    seed = saved.seed ?? 0;                              // sessions saved before seeds used the built-in one
     opponent = saved.opponent ?? { aggressive: true, mystery: false, revealed: false };
     paused = saved.paused; viewPly = saved.viewPly;
     finished = game.gameOver(); running = !finished; tickFrom = performance.now();
@@ -398,18 +400,18 @@ async function scheduleBot() {
   const level = players[colour];
   const book = level > 1 ? bookMove() : null;
   if (book) {
-    setStatus(`level ${level} plays from the book: ${book.opening.name}`);
+    setStatus(`level ${level} plays from the book: ${openingName([book]) || book}`);
     await new Promise((r) => setTimeout(r, 400));          // a beat, so book moves do not flash by
     if (id !== gameId) return;
     thinking = false;
     if (paused) return;
-    if (!playMove(book.san)) { console.error("book move rejected", book); setStatus("book move rejected: " + book.san); }
+    if (!playMove(book)) { console.error("book move rejected", book); setStatus("book move rejected: " + book); }
     return;
   }
   setStatus(`level ${level} is thinking`, true);
   try {
     const uci = await engine.bestMove({
-      startFen, moves: uciMoves, level, aggressive: opponent.aggressive, chess960: variant === "chess960",
+      startFen, moves: uciMoves, level, aggressive: opponent.aggressive, chess960: variant === "chess960", seed,
     });
     if (id !== gameId) return;                           // a new game was started meanwhile
     thinking = false;
@@ -445,7 +447,7 @@ function newGame() {
   startFen = variant === "chess960" ? chess960Fen(gamePosition) : START_FEN;
   game = new Chess({ fen: startFen, gameVariant: variant === "chess960" ? GAME_VARIANT.chess960 : GAME_VARIANT.standard });
   uciMoves = []; elapsed = { white: 0, black: 0 }; tickFrom = performance.now();
-  finished = false; paused = false; viewPly = null; running = true;
+  finished = false; paused = false; viewPly = null; running = true; seed = newSeed();
   gameDate = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
   $("promotion").classList.add("hidden");
   const mode = $("mode").value, level = parseInt($("level").value), level2 = parseInt($("level2").value);
@@ -578,6 +580,6 @@ engine.ready.then(() => {
   else if (running) scheduleBot();
   else setStatus(`engine ready (${engine.mode}) — press New game`);
 }).catch((e) => setStatus("engine failed to load: " + e.message));
-globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookLines, viewAt, shownPly };   // for the console and tests
+globalThis.pedagogApp = { cg, get game() { return game; }, userMove: onUserMove, pgn, newGame, validateBook, book: bookTree, get seed() { return seed; }, viewAt, shownPly };   // for the console and tests
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});

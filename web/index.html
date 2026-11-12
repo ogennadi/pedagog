@@ -144,7 +144,9 @@
       in a plain style; Mystery picks one of the two in secret, for a blind test. Levels are
       calibrated against the Maia bots and read as Lichess classical ratings: level 2 ≈ 945,
       level 10 ≈ 1755 (Maia-1900); level 1 plays random moves. In standard chess the bots open
-      from a small book of about a hundred lines, a quarter of them offbeat.
+      from a small weighted book, at most six plies deep and wide on purpose (about a fifth of
+      each side's first moves are rim or Grob-style flank thrusts), then the engine takes over. Each game draws its own
+      engine seed, recorded in the PGN as <code>SkillSeed</code>.
       Click a move, or use the
       ← → keys, to step through the game.
       Board by <a href="https://github.com/lichess-org/chessground">chessground</a> (GPL-3),
