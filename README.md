@@ -32,7 +32,9 @@ bun run diff CMD [ARGS]       # compare another engine's UCI output with engine.
 
 The repository is laid out as:
 
-- `engine.ts` — the engine, the only code at the top level.
+- `engine.ts` — the engine, the only code at the top level. It is written to
+  translate line by line into other languages; see the
+  [porting notes](docs/porting/README.md#how-enginets-is-written-for-porting).
 - `web/` — the web app (`index.html`, its scripts and styles, the service
   worker, vendored libraries).
 - `tests/` — `bun test`; `tools/` — match runner, Elo fit, style statistics,

@@ -44,24 +44,6 @@
    Positions are values too: makeMove() returns a new position
    rather than changing the old one. That costs some speed, since
    every move copies a board, but nothing ever has to be undone.
-
-   FOR PORTERS
-   The file is written so that it translates line by line into most
-   languages:
-   - Every number is an integer. Where a division can meet a
-     negative number it rounds toward zero (Math.trunc), as C, Go,
-     Java, Rust and most CPUs do; Python's // and Haskell's `div`
-     round down instead, so use `quot` / a truncating helper there.
-   - Hashing is unsigned 32-bit arithmetic: Math.imul is a 32-bit
-     multiply that wraps, `>>>` is the logical shift and `>>> 0`
-     reads the bits as unsigned. Zobrist keys are combined with XOR.
-   - The board layout (0x88) is reached only through a few helpers
-     (fileOf, rankOf, onBoard, index64, ...), so a port may use
-     another layout and still produce the same keys and choices.
-   - Captures are sorted with an explicit tie-break, so any sort
-     algorithm, stable or not, gives the same order.
-   - The changing state of a search is one small object (Search),
-     not variables captured by nested functions.
 ================================================================
 
    TABLE OF CONTENTS

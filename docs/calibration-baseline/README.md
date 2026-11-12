@@ -1,16 +1,13 @@
-# Calibration input archives
+# Calibration input archive
 
-Two archived match sets, each with the SHA-256 hash and game count of every PGN:
+`round-10-pgns.zip` and `manifest-round-10.json` (the SHA-256 hash and game count of every
+PGN): the 61 PGNs (18,300 games) behind the published `docs/skill-curve.json`,
+`docs/skill-curve.png` and `docs/style.json` (Part III), played by the engine of commit
+`bebea84` (both ladders, both styles). The round-9 archive (Part II), which no longer
+matches the engine, is in Git history (commit `2a3789f`).
 
-- **Round 10** (current, Part III): `round-10-pgns.zip` and `manifest-round-10.json` — the
-  61 PGNs (18,300 games) behind the published `docs/skill-curve.json`, `docs/skill-curve.png`
-  and `docs/style.json`, played by the engine of commit `bebea84` (both ladders, both styles).
-- **Round 9** (historical, Part II): `round-9-pgns.zip` and `manifest.json` — the 30 PGNs
-  (8,900 games) behind the round-9 ladder table in `docs/COLOPHON.md`. It no longer matches the
-  engine.
-
-Extract an archive to a fresh directory, then pass the files explicitly to the tools. For
-round 10, in PowerShell:
+Extract the archive to a fresh directory, then pass the files explicitly to the tools. In
+PowerShell:
 
 ```powershell
 Expand-Archive -LiteralPath docs\calibration-baseline\round-10-pgns.zip `

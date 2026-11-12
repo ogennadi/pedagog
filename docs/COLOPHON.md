@@ -213,8 +213,8 @@ this: level 10 is now depth-bounded and weakened like the others, and
 
 This is the Part II ladder: one style, level 10 at full strength on the
 clock. Part III replaced it with two depth-bounded ladders (see
-[Part III](#part-iii--an-aggressive-style)); the round-9 archive and this
-table are kept as the historical record.
+[Part III](#part-iii--an-aggressive-style)); this table is kept as the
+historical record.
 
 Method: every level played 300 games against the level below and 300 against
 each of Maia-1100 and Maia-1900 (some also Maia-1500), level 10 at 10+0.1,
@@ -223,9 +223,9 @@ all others depth-bounded; `tools/elo.js` fits one rating to all results
 scale is anchored on **Maia-1900 = 1755**, the Lichess classical rating of
 the bot that runs that network (`maia9`: 1755, RD 45, 141,012 games on
 2026-10-06), so the numbers below read as Lichess classical ratings. Nine
-tuning rounds; the published fit uses round 9 only, archived with per-file
-hashes under `docs/calibration-baseline/`. The resulting ratings are in
-`docs/skill-curve.json`. Note that the
+tuning rounds; the fit used round 9 only. Its PGNs were archived as
+`docs/calibration-baseline/round-9-pgns.zip`, now only in Git history
+(commit `2a3789f`). Note that the
 three Maias span only ~220 Elo against engines (1538 / 1670 / 1755 here),
 whatever their training labels say.
 
@@ -250,7 +250,7 @@ on the joint fit. The top is structurally tight: pure depth 5 is already full
 strength here, so levels 7–10 have to share about 340 Elo. (The ladder was
 tuned with Maia-1900 anchored at its nominal 1900; re-anchoring to 1755 only
 shifts every rating by −145 and changes no gap.) The round-9 figure was replaced
-by Part III's; the round-9 ratings remain in the table above and in the archive.
+by Part III's; the round-9 ratings remain in the table above.
 
 ### Blunder rate
 
@@ -442,7 +442,7 @@ and PeSTO only if the engine turned out too weak, and it did not.
 - `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, build.
 - `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
   `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs
-  behind each published fit.
+    behind the published fit.
 - `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`,
   `bun run build`, `bun run match`, `bun run elo`.
 

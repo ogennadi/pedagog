@@ -13,6 +13,42 @@ The user is learning the language through this port, so the code must be what an
 programmer in that language would write (its own naming conventions, idioms, type system,
 standard library), while keeping the engine's structure, algorithms and domain names.
 
+## How engine.ts is written for porting
+The file translates line by line into most languages:
+- Every number is an integer. Where a division can meet a negative number it rounds
+  toward zero (`Math.trunc`), as C, Go, Java, Rust and most CPUs do; Python's `//` and
+  Haskell's `div` round down instead, so use `quot` / a truncating helper there.
+- Hashing is unsigned 32-bit arithmetic: `Math.imul` is a 32-bit multiply that wraps,
+  `>>>` is the logical shift and `>>> 0` reads the bits as unsigned. Zobrist keys are
+  combined with XOR.
+- The board layout (0x88) is reached only through a few helpers (`fileOf`, `rankOf`,
+  `onBoard`, `index64`, ...), so a port may use another layout and still produce the
+  same keys and choices.
+- Captures are sorted with an explicit tie-break, so any sort algorithm, stable or not,
+  gives the same order.
+- The changing state of a search is one small object (`Search`), not variables captured
+  by nested functions.
+
+### TypeScript features it does not use
+- `enum` and `namespace`. They are the TypeScript features that generate JavaScript
+  rather than being erased, so `tsconfig.json` forbids them (`erasableSyntaxOnly`):
+  deleting the types from engine.ts must leave the browser's engine.js. Pieces,
+  colours and move flags are plain integer constants (`PAWN = 1`,
+  `type | colour << 3`), which every language has.
+- Generics, class inheritance and getters. What is read is what runs: no dispatch or
+  hidden calls. The two classes (`Search`, `Draft`) are plain mutable records with
+  methods; the only `extends` is between interfaces (`Skill extends Rung, Style`).
+- `Map` and `Set`. Boards and tables are typed arrays or plain arrays: every language
+  has them, and hash-map iteration order differs between languages.
+- Exceptions for control flow. The one `throw` reports a bug (an illegal move);
+  there is no `try`.
+- Generators, and `async` outside the Bun stdin loop. Few languages share their
+  semantics, and search must not depend on an event loop.
+- Floating point, `BigInt` and `Math.random`. Arithmetic is 32-bit integer and
+  randomness comes from seeded hashes, so a port can match `bench` node counts and
+  moves exactly.
+- Optional chaining (`?.`). Null checks are written out.
+
 ## Read first
 - `engine.ts` - read ALL of it. Keep its section layout (S0 Constants ... S6 UCI), its
   explanatory block comments (this is a pedagogical engine: adapt the prose, do not drop it),
