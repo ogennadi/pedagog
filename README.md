@@ -130,5 +130,5 @@ Original Pedagog-authored material is dedicated to the public domain under
 CC0 1.0. This does not relicense dependencies: the combined web app includes
 GPL-3.0-or-later chessground; the remaining vendors
 retain their MIT and BSD-2-Clause terms. See [`LICENSE`](LICENSE) and
-[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) before redistributing a
+[`THIRD_PARTY_NOTICES.md`](docs/THIRD_PARTY_NOTICES.md) before redistributing a
 combined web build.

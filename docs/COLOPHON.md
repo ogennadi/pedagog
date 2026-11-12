@@ -306,7 +306,7 @@ chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
 app includes chessground and is distributed under GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
 to CC0 separately. The
 standalone engine (`engine.ts`) is independent of the web dependencies. See
-`LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
+`LICENSE` and `docs/THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
 
 ### Tools
 
