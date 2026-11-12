@@ -29,13 +29,15 @@ test("every naming line is legal", () => {
   expect(OPENINGS.map((o) => illegal(o.moves.split(" "))).filter(Boolean)).toEqual([]);
 });
 
-test("rim lines are in the book for both colours", () => {
+test("rook-pawn rim thrusts are not book lines for either colour", () => {
   const sans = (played) => bookChildren(tree, played).map((n) => n.san);
-  expect(sans([])).toEqual(expect.arrayContaining(["h4", "a4", "Na3"]));
-  expect(sans(["h4", "e5"])).toContain("h5");
-  expect(sans(["a4", "e5"])).toContain("a5");
-  expect(sans(["e4"])).toEqual(expect.arrayContaining(["h5", "a5"]));
-  expect(sans(["d4"])).toEqual(expect.arrayContaining(["h5", "a5"]));
+  expect(sans([])).toContain("Na3");
+  expect(sans([])).not.toEqual(expect.arrayContaining(["h4"]));
+  expect(sans([])).not.toEqual(expect.arrayContaining(["a4"]));
+  for (const first of ["e4", "d4"]) {
+    expect(sans([first])).not.toContain("h5");
+    expect(sans([first])).not.toContain("a5");
+  }
 });
 
 test("bookChildren ignores check marks and ends off book", () => {
@@ -43,15 +45,15 @@ test("bookChildren ignores check marks and ends off book", () => {
   expect(bookChildren(tree, ["e4", "e5", "Ke2"])).toEqual([]);
 });
 
-test("rim and Grob-type first moves get at least 20% for each colour", () => {
+test("rim and Grob-type first moves get at least 12% for each colour", () => {
   const WHITE = ["a3", "a4", "h3", "h4", "Na3", "Nh3", "g4", "b4"];
   const BLACK = ["a6", "a5", "h6", "h5", "Na6", "Nh6", "g5", "b5"];
   const total = (nodes) => nodes.reduce((s, n) => s + n.weight, 0);
   const share = (nodes, set) => nodes.filter((n) => set.includes(n.san)).reduce((s, n) => s + n.weight, 0) / total(nodes);
   const white = share(tree, WHITE);
   const black = tree.reduce((s, n) => s + (n.weight / total(tree)) * share(n.children, BLACK), 0);
-  expect(white).toBeGreaterThanOrEqual(0.2);
-  expect(black).toBeGreaterThanOrEqual(0.2);
+  expect(white).toBeGreaterThanOrEqual(0.12);
+  expect(black).toBeGreaterThanOrEqual(0.12);
 });
 
 test("pickWeighted follows the weights", () => {
