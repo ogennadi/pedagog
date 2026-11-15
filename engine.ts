@@ -123,7 +123,6 @@ type Millis = number;
 /** A line of moves, best play first. */
 type Pv = readonly Move[];
 
-const NAME = "Pedagog", VERSION = "1.0";
 
 const WHITE = 0, BLACK = 1;
 const EMPTY = 0, PAWN = 1, KNIGHT = 2, BISHOP = 3;
@@ -1432,49 +1431,18 @@ function newSession(): Session {
 }
 
 /* Carry out one UCI command, and return the session it leaves.
-   "uci" lists the options:
-     Hash          accepted, no effect: there is no transposition table
-     Threads       accepted for OpenBench; always single-threaded
-     UCI_Chess960  castling is written king-takes-rook
-     Skill_Level   1 = random mover, SKILL_MAX = strongest
-     Skill_Seed    which deterministic opponent; 0 = built-in
-   "setoption" ignores Hash and Threads. "stop" is left to the I/O
-   layer, which handles it while searching; "quit" is echoed back so
-   the I/O layer knows the queue is drained. */
+   "stop" is left to the I/O layer, which handles it while searching;
+   "quit" is echoed back so the I/O layer knows the queue is drained.
+   Unknown commands are ignored. */
 function uciCommand(session: Session, line: string, io: Io): Session {
   const tokens = words(line);
   const { pos, skill, chess960 } = session;
   switch (tokens[0]) {
     case "uci":
-      io.out(`id name ${NAME} ${VERSION}`);
-      io.out("id author Copilot (Claude Fable 5.1)");
-      io.out("option name Hash type spin default 16 min 1 max 1024");
-      io.out("option name Threads type spin default 1 min 1 max 1");
-      io.out("option name UCI_Chess960 type check default false");
-      io.out("option name Skill_Level type spin" +
-        ` default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
-      io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
-      io.out("uciok");
+      identify(io);
       return session;
-    case "setoption": {
-      const nameAt = tokens.indexOf("name"), valueAt = tokens.indexOf("value");
-      const name = tokens
-        .slice(nameAt + 1, valueAt > 0 ? valueAt : tokens.length)
-        .join(" ")
-        .toLowerCase();
-      const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
-      if (name === "uci_chess960")
-        return { ...session, chess960: value.toLowerCase() === "true" };
-      if (name === "skill_level") {
-        const level = toInteger(value, SKILL_MAX);
-        return { ...session, skill: skillFor(level, skill.seed) };
-      }
-      if (name === "skill_seed") {
-        const seed = toInteger(value, 0);
-        return { ...session, skill: skillFor(skill.level, seed) };
-      }
-      return session;
-    }
+    case "setoption":
+      return setOption(session, tokens);
     case "isready":
       io.out("readyok");
       return session;
@@ -1484,18 +1452,9 @@ function uciCommand(session: Session, line: string, io: Io): Session {
       const args = tokens.slice(1).join(" ");
       return { ...session, pos: parsePosition(args, chess960) };
     }
-    case "go": {
-      const limits = limitsFor(parseGo(tokens), pos.sideToMove, skill.level);
-      const result = think(pos, limits, skill, {
-        now: io.now,
-        shouldStop: io.shouldStop,
-        onInfo: (info) => io.out(infoLine(info, chess960)),
-      });
-      const best = result.bestMove !== NO_MOVE
-        ? moveToUci(result.bestMove, chess960) : "0000";
-      io.out("bestmove " + best);
+    case "go":
+      go(session, tokens, io);
       return session;
-    }
     case "stop":
       return session;
     case "quit":
@@ -1516,6 +1475,63 @@ function uciCommand(session: Session, line: string, io: Io): Session {
     default:
       return session;
   }
+}
+
+/* Answer "uci": the engine's name and author, then its options:
+     Hash          accepted, no effect: there is no transposition table
+     Threads       accepted for OpenBench; always single-threaded
+     UCI_Chess960  castling is written king-takes-rook
+     Skill_Level   1 = random mover, SKILL_MAX = strongest
+     Skill_Seed    which deterministic opponent; 0 = built-in */
+function identify(io: Io): void {
+  io.out("id name Pedagog 1.0");
+  io.out("id author Copilot (Claude Fable 5.1)");
+  io.out("option name Hash type spin default 16 min 1 max 1024");
+  io.out("option name Threads type spin default 1 min 1 max 1");
+  io.out("option name UCI_Chess960 type check default false");
+  io.out("option name Skill_Level type spin" +
+    ` default ${SKILL_MAX} min 1 max ${SKILL_MAX}`);
+  io.out("option name Skill_Seed type spin default 0 min 0 max 2147483647");
+  io.out("uciok");
+}
+
+/* The session after "setoption name <name> value <value>". Hash,
+   Threads and unknown options leave it as it is. */
+function setOption(session: Session, tokens: readonly string[]): Session {
+  const nameAt = tokens.indexOf("name"), valueAt = tokens.indexOf("value");
+  const name = tokens
+    .slice(nameAt + 1, valueAt > 0 ? valueAt : tokens.length)
+    .join(" ")
+    .toLowerCase();
+  const value = valueAt > 0 ? tokens.slice(valueAt + 1).join(" ") : "";
+  const { skill } = session;
+  if (name === "uci_chess960")
+    return { ...session, chess960: value.toLowerCase() === "true" };
+  if (name === "skill_level") {
+    const level = toInteger(value, SKILL_MAX);
+    return { ...session, skill: skillFor(level, skill.seed) };
+  }
+  if (name === "skill_seed") {
+    const seed = toInteger(value, 0);
+    return { ...session, skill: skillFor(skill.level, seed) };
+  }
+  return session;
+}
+
+/* Answer "go ...": search the session's position within the limits
+   the command gives, report each depth, then the best move ("0000"
+   when there is no legal move). */
+function go(session: Session, tokens: readonly string[], io: Io): void {
+  const { pos, skill, chess960 } = session;
+  const limits = limitsFor(parseGo(tokens), pos.sideToMove, skill.level);
+  const result = think(pos, limits, skill, {
+    now: io.now,
+    shouldStop: io.shouldStop,
+    onInfo: (info) => io.out(infoLine(info, chess960)),
+  });
+  const best = result.bestMove !== NO_MOVE
+    ? moveToUci(result.bestMove, chess960) : "0000";
+  io.out("bestmove " + best);
 }
 
 /* A new position from the arguments of a UCI "position" command:
