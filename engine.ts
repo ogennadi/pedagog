@@ -19,8 +19,8 @@
    main thread handles input and interruption, not parallel search.
 
    It is deliberately a base engine: iterative deepening, alpha-beta
-   with simple move ordering and a short quiescence search, and a
-   plain piece-square evaluation, and nothing else. Skill_Level
+   with captures tried first, and a plain piece-square evaluation,
+   and nothing else. Skill_Level
    picks one of ten levels, from a random mover to about Maia-1900
    (1755 on the Lichess classical scale), weakened the way Gaia does
    it: the engine looks less far ahead, misjudges some positions on
@@ -142,41 +142,93 @@ const NO_MOVE: Move = 0;
 const NO_SQUARE: Square = -1;
 const FLAG_EP: MoveType = 1, FLAG_CASTLE: MoveType = 2;
 
-const opponent = (colour: Colour): Colour => (colour === WHITE ? BLACK : WHITE);
-const typeOf = (piece: Piece): PieceType => piece & 7;
-const colourOf = (piece: Piece): Colour => (piece >> 3) as Colour;
-const makePiece = (pieceType: PieceType, colour: Colour): Piece =>
-  pieceType | (colour << 3);
+/* The other colour. */
+function opponent(colour: Colour): Colour {
+  return colour === WHITE ? BLACK : WHITE;
+}
+/* The type of `piece`, PAWN to KING (EMPTY for an empty square). */
+function typeOf(piece: Piece): PieceType {
+  return piece & 7;
+}
+/* The colour of `piece`, which must not be EMPTY. */
+function colourOf(piece: Piece): Colour {
+  return (piece >> 3) as Colour;
+}
+/* The piece of `pieceType` and `colour`, packed: type | colour << 3. */
+function makePiece(pieceType: PieceType, colour: Colour): Piece {
+  return pieceType | (colour << 3);
+}
 
 // ---- The board layout: the only code that knows squares are 0x88.
 const BOARD_SIZE = 128;
-const fileOf = (sq: Square): File => sq & 7;
-const rankOf = (sq: Square): Rank => sq >> 4;
-const makeSquare = (file: File, rank: Rank): Square => rank * 16 + file;
-const onBoard = (sq: Square): boolean => (sq & 0x88) === 0;
-const flipRank = (sq: Square): Square => makeSquare(fileOf(sq), 7 - rankOf(sq));
-const index64 = (sq: Square): Index64 => rankOf(sq) * 8 + fileOf(sq);
+/* The file of `sq`, 0 (a) to 7 (h). */
+function fileOf(sq: Square): File {
+  return sq & 7;
+}
+/* The rank of `sq`, 0 (rank 1) to 7 (rank 8). */
+function rankOf(sq: Square): Rank {
+  return sq >> 4;
+}
+/* The square on `file` and `rank`. */
+function makeSquare(file: File, rank: Rank): Square {
+  return rank * 16 + file;
+}
+/* Is `sq` on the board? Off-board 0x88 squares have bit 3 or 7 set. */
+function onBoard(sq: Square): boolean {
+  return (sq & 0x88) === 0;
+}
+/* The same square seen from black's side: a1 <-> a8. */
+function flipRank(sq: Square): Square {
+  return makeSquare(fileOf(sq), 7 - rankOf(sq));
+}
+/* The index of `sq` from 0 (a1) to 63 (h8), used by the Zobrist keys
+   and the piece-square tables so they work with any board layout. */
+function index64(sq: Square): Index64 {
+  return rankOf(sq) * 8 + fileOf(sq);
+}
 /** The 64 squares, a1, b1, ... h8: the order every board walk uses. */
 const SQUARES: readonly Square[] = Array.from({ length: 64 },
   (_, i) => makeSquare(i % 8, Math.floor(i / 8)));
 /** One square forward for a pawn of each colour. */
 const PAWN_STEP: readonly [number, number] = [16, -16];
 
-const fromSq = (move: Move): Square => move & 127;
-const toSq = (move: Move): Square => (move >> 7) & 127;
-const promoType = (move: Move): PieceType => (move >> 14) & 7;
-const moveType = (move: Move): MoveType => (move >> 17) & 3;
-const encodeMove = (
+/* The square `move` starts from. */
+function fromSq(move: Move): Square {
+  return move & 127;
+}
+/* The square `move` goes to. For castling, the rook's square. */
+function toSq(move: Move): Square {
+  return (move >> 7) & 127;
+}
+/* The piece type `move` promotes to, or 0. */
+function promoType(move: Move): PieceType {
+  return (move >> 14) & 7;
+}
+/* The kind of `move`: 0 (normal), FLAG_EP or FLAG_CASTLE. */
+function moveType(move: Move): MoveType {
+  return (move >> 17) & 3;
+}
+/* The four parts of a move packed into one number: from in bits
+   0-6, to in 7-13, promo in 14-16, type in 17-18. */
+function encodeMove(
   from: Square, to: Square, promo: PieceType, type: MoveType,
-): Move =>
-  from | (to << 7) | (promo << 14) | (type << 17);
+): Move {
+  return from | (to << 7) | (promo << 14) | (type << 17);
+}
 
-const squareName = (sq: Square): string =>
-  FILE_NAMES[fileOf(sq)] + RANK_NAMES[rankOf(sq)];
-const parseSquare = (str: string): Square =>
-  makeSquare(FILE_NAMES.indexOf(str[0]), RANK_NAMES.indexOf(str[1]));
+/* The algebraic name of `sq`, such as "e4". */
+function squareName(sq: Square): string {
+  return FILE_NAMES[fileOf(sq)] + RANK_NAMES[rankOf(sq)];
+}
+/* The square named by `str`, such as "e4". */
+function parseSquare(str: string): Square {
+  return makeSquare(FILE_NAMES.indexOf(str[0]), RANK_NAMES.indexOf(str[1]));
+}
 
-const now = (): Millis => performance.now();
+/* Milliseconds from a high-resolution clock. */
+function now(): Millis {
+  return performance.now();
+}
 
 /* ================================================================
    S1  SEARCH
@@ -184,19 +236,16 @@ const now = (): Millis => performance.now();
 
    The search answers one question: which move is best? It looks
    ahead a fixed number of plies with negamax alpha-beta, trying
-   the previous best move and then captures first, and asks the
-   static evaluation about the positions at the leaves, after a
-   short quiescence search has played out the captures pending there
-   (a leaf in the middle of an exchange is otherwise judged as if the
-   exchange were over, the "horizon effect"). That is the whole
-   search: there is no hash table and no pruning beyond alpha-beta
+   captures first, and asks the static evaluation about the
+   positions at the leaves. That is the whole search: there is no
+   quiescence search, no hash table and no pruning beyond alpha-beta
    itself.
 
    think(pos, limits, skill, io)
                iterative deepening: depth 1, 2, 3, ... until a limit
                is reached. Returns the result of the last finished
                depth, so there is always a complete answer.
-   Search.search(pos, alpha, beta, depth, ply, hint)
+   Search.search(pos, alpha, beta, depth, ply)
                negamax alpha-beta. Alpha is the best score the side
                to move is already assured of, beta the best the
                opponent will allow. A move scoring >= beta is "too
@@ -211,8 +260,8 @@ const now = (): Millis => performance.now();
    count, the stop flag and the depth being searched.
 
    Without the skill (the three calls marked "skill"), search() is
-   the Chess Programming Wiki's fail-soft Alpha-Beta and qsearch() its
-   Quiescence Search, with judge() in place of Evaluate.
+   the Chess Programming Wiki's fail-soft Alpha-Beta, with judge() in
+   place of Evaluate.
 
    Scores are always from the point of view of the side to move
    (negamax): +100 means "the side to move is a pawn up". A child's
@@ -221,7 +270,6 @@ const now = (): Millis => performance.now();
 */
 
 const NO_LINE: Pv = Object.freeze([]);
-const QSEARCH_PLIES = 4; // captures followed past a leaf
 
 /** How far and how long to search. After softMs no new depth
     starts; at hardMs the search is cut off. */
@@ -276,7 +324,7 @@ function think(
     };
 
   if (skill.level === 1) {
-    const move = randomMove(pos, skill, rootMoves);
+    const move = mateOrRandomMove(pos, skill, rootMoves);
     const result = {
       bestMove: move, depth: 1, score: 0,
       nodes: rootMoves.length, elapsed: 0, pv: [move],
@@ -294,7 +342,7 @@ function think(
   };
 
   for (let depth = 1; depth <= maxDepth; depth++) {
-    const { score, pv } = search.root(pos, depth, best.pv);
+    const { score, pv } = search.root(pos, depth);
     if (search.stopped) break;
     best = {
       bestMove: pv[0], depth, score, nodes: search.nodes,
@@ -317,6 +365,7 @@ class Search {
   stopped = false;
   rootDepth = 0;
 
+  /* A search with no nodes counted yet. */
   constructor(
     limits: Limits, skill: Skill, io: SearchIo,
     unseen: Pv, startTime: Millis,
@@ -328,49 +377,40 @@ class Search {
     this.startTime = startTime;
   }
 
-  /* One iteration of think(): the root searched to `depth`, trying
-     `hint`, the previous depth's best line, first. */
-  root(pos: Position, depth: number, hint: Pv): Line {
+  /* One iteration of think(): the root searched to `depth`. */
+  root(pos: Position, depth: number): Line {
     this.rootDepth = depth;
-    return this.search(pos, -INF, INF, depth, 0, hint);
+    return this.search(pos, -INF, INF, depth, 0);
   }
 
   /* Negamax to a fixed depth: terminate, try moves, keep the best line
      (the best move, then its reply line), and stop at a beta cutoff,
-     as the opponent would never allow that line. `hint` is what
-     remains of the previous depth's best line along this path (or
-     NO_LINE): its first move is tried first, as it is likely the best
-     again. makeMove() returns null for a move that leaves our king in
-     check. With no legal move, the position is checkmate or
+     as the opponent would never allow that line. A leaf is judged as
+     it stands. makeMove() returns null for a move that leaves our king
+     in check. With no legal move, the position is checkmate or
      stalemate.
 
      The skill may overlook a move (overlooks()). If it overlooks
      every legal move, it judges the position as it stands. */
   search(
     pos: Position, alpha: Score, beta: Score,
-    depth: number, ply: number, hint: Pv,
+    depth: number, ply: number,
   ): Line {
     if (this.countNodeAndCheckStop()) return STOPPED;
     if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
     const atLeaf = depth === 0 || ply >= MAX_PLY - 1;
-    if (atLeaf)
-      return {
-        score: this.qsearch(pos, alpha, beta, ply, QSEARCH_PLIES),
-        pv: NO_LINE,
-      };
+    if (atLeaf) return { score: judge(pos, this.skill), pv: NO_LINE };
 
     let bestScore = -INF, pv = NO_LINE;
     let raisedAlpha = alpha; // alpha, raised as better moves are found
     let legalMoveCount = 0;
-    const pvMove = hint[0] ?? NO_MOVE;
-    for (const move of orderMoves(pos, generateMoves(pos), pvMove)) {
+    for (const move of orderMoves(pos, generateMoves(pos))) {
       const next = makeMove(pos, move);
       if (next === null) continue;
       legalMoveCount++;
       if (this.overlooks(next, move, ply)) continue;
-      const childHint = move === hint[0] ? hint.slice(1) : NO_LINE;
       const child = this.search(next, -beta, -raisedAlpha,
-        depth - 1, ply + 1, childHint);
+        depth - 1, ply + 1);
       if (this.stopped) return STOPPED;
 
       const score = -child.score;
@@ -392,38 +432,6 @@ class Search {
     return { score: bestScore, pv };
   }
 
-  /* Quiescence: at a leaf, keep trying captures (and promotions) until
-     the position is quiet, so a leaf is not judged in the middle of an
-     exchange. The side to move may always "stand pat" instead: decline
-     every capture and take the leaf's own judgement. Only `pliesLeft`
-     more captures are followed, as long sequences cost much and change
-     little. Returns a score. */
-  qsearch(
-    pos: Position, alpha: Score, beta: Score,
-    ply: number, pliesLeft: number,
-  ): Score {
-    if (this.countNodeAndCheckStop()) return 0;
-    const standPat = judge(pos, this.skill);
-    if (standPat >= beta || pliesLeft === 0 || ply >= MAX_PLY - 1)
-      return standPat;
-    let bestScore = standPat, raisedAlpha = Math.max(alpha, standPat);
-    for (const move of capturesByValue(pos, generateMoves(pos))) {
-      const next = makeMove(pos, move);
-      if (next === null) continue;
-      const score =
-        -this.qsearch(next, -beta, -raisedAlpha, ply + 1, pliesLeft - 1);
-      if (this.stopped) return 0;
-      if (score > bestScore) {
-        bestScore = score;
-        if (score > raisedAlpha) {
-          raisedAlpha = score;
-          if (raisedAlpha >= beta) break;
-        }
-      }
-    }
-    return bestScore;
-  }
-
   /* Does the player fail to notice `move`, made at `ply` and leading
      to `next`? At the root the overlooked moves were chosen in
      advance; deeper, seesMove() decides. */
@@ -443,6 +451,8 @@ class Search {
     return this.stopped;
   }
 
+  /* Has the node limit or the hard time limit been reached, or a stop
+     been asked for? */
   limitReached(): boolean {
     return (this.limits.nodes > 0 && this.nodes >= this.limits.nodes) ||
       this.io.now() - this.startTime >= this.limits.hardMs ||
@@ -450,23 +460,21 @@ class Search {
   }
 }
 
-const isMateScore = (score: Score): boolean =>
-  Math.abs(score) >= MATE_IN_MAX_PLY;
+/* Is `score` a mate score rather than an evaluation? */
+function isMateScore(score: Score): boolean {
+  return Math.abs(score) >= MATE_IN_MAX_PLY;
+}
 
 /* ---- Move ordering --------------------------------------------
-   Alpha-beta prunes most when a good move is tried first. The best
-   guess is the move that was best at the previous depth (`pvMove`,
-   if any); after it come the captures (and promotions), the most
-   valuable victim first and, among equal victims, the least valuable
-   attacker first (MVV-LVA); then the quiet moves, in the order they
-   were generated. Returns a new array. */
-function orderMoves(pos: Position, moves: Pv, pvMove: Move): Move[] {
-  const rest = moves.filter((move) => move !== pvMove);
-  const ordered = [
-    ...capturesByValue(pos, rest),
-    ...rest.filter((move) => !isCapture(pos, move)),
+   Alpha-beta prunes most when a good move is tried first, and the
+   simplest guess at a good move is a capture. So: captures (and
+   promotions) first, then the quiet moves, each group in the order
+   it was generated. Returns a new array. */
+function orderMoves(pos: Position, moves: Pv): Move[] {
+  return [
+    ...moves.filter((move) => isCapture(pos, move)),
+    ...moves.filter((move) => !isCapture(pos, move)),
   ];
-  return rest.length < moves.length ? [pvMove, ...ordered] : ordered;
 }
 
 /* Does `move` take a piece or promote? Castling ("king takes own
@@ -475,27 +483,6 @@ function isCapture(pos: Position, move: Move): boolean {
   return moveType(move) !== FLAG_CASTLE &&
     (pos.board[toSq(move)] !== EMPTY || moveType(move) === FLAG_EP ||
       promoType(move) !== 0);
-}
-
-/* The captures (and promotions) among `moves`, as a new array, by
-   captureScore(), highest first; equal scores keep the order of
-   `moves`. */
-function capturesByValue(pos: Position, moves: Pv): Move[] {
-  const captures = moves.filter((move) => isCapture(pos, move));
-  const scores = captures.map((move) => captureScore(pos, move));
-  const order = captures.map((_, i) => i)
-    .sort((a, b) => scores[b] - scores[a] || a - b);
-  return order.map((i) => captures[i]);
-}
-
-/* MVV-LVA (most valuable victim, least valuable attacker): ten
-   times the victim's value, plus the value of a promotion, minus the
-   attacker's value. */
-function captureScore(pos: Position, move: Move): number {
-  const victim = moveType(move) === FLAG_EP
-    ? PAWN : typeOf(pos.board[toSq(move)]);
-  return 10 * MG_VALUE[victim] + MG_VALUE[promoType(move)] -
-    MG_VALUE[typeOf(pos.board[fromSq(move)])];
 }
 
 /* ---- Time management -------------------------------------------
@@ -515,6 +502,8 @@ const NO_TIME_LIMIT: Millis = 2 ** 31 - 1; // about 25 days
 const MOVE_OVERHEAD: Millis = 20;
 const TIME_RESERVE: Millis = 1000;   // the first second is never spent
 
+/* The search limits for a "go" command `go`, with `side` to move,
+   playing at `level`. */
 function limitsFor(go: Go, side: Colour, level: number): Limits {
   const untimed: Limits = {
     depth: go.depth || MAX_PLY, nodes: go.nodes ?? 0,
@@ -606,9 +595,11 @@ interface Rung {
   readonly vision: number;          // chance, out of 1024, of noticing a move
 }
 
-const rung = (depth: number, deeperPermille: number, blunderWindow: Score,
-  blunderPermille: number, vision: number): Rung =>
-  ({ depth, deeperPermille, blunderWindow, blunderPermille, vision });
+/* One ladder rung; each argument is one knob. */
+function rung(depth: number, deeperPermille: number, blunderWindow: Score,
+  blunderPermille: number, vision: number): Rung {
+  return { depth, deeperPermille, blunderWindow, blunderPermille, vision };
+}
 
 /* The ladder, from a beginner's opponent up to Maia-1900's strength,
    evenly spaced about 100 Elo apart. The ratings are on the Lichess
@@ -706,11 +697,12 @@ function overlookedRootMoves(
 
 /* Level 1: a random legal move from `moves`, unless one mates on the
    spot. */
-function randomMove(pos: Position, skill: Skill, moves: Pv): Move {
+function mateOrRandomMove(pos: Position, skill: Skill, moves: Pv): Move {
   return moves.find((move) => givesMate(pos, move)) ??
     moves[mix32(pos.key ^ skill.seedKey) % moves.length];
 }
 
+/* Does the legal `move` checkmate? */
 function givesMate(pos: Position, move: Move): boolean {
   const after = makeLegalMove(pos, move);
   return legalMoves(after).length === 0 && inCheck(after);
@@ -748,8 +740,9 @@ type PsqTable = Int16Array;
 
 const MG_VALUE: readonly number[] = [0, 100, 320, 330, 500, 900, 0];
 const EG_VALUE: readonly number[] = [0, 120, 320, 330, 520, 920, 0];
-// 24 at the start, 0 when only kings and pawns remain.
-const PHASE_INC: readonly number[] = [0, 0, 1, 1, 2, 4, 0];
+/* Each piece type's share of the game phase. Summed over the board:
+   24 (PHASE_MAX) at the start, 0 when only kings and pawns remain. */
+const PHASE_WEIGHT: readonly number[] = [0, 0, 1, 1, 2, 4, 0];
 const PHASE_MAX = 24;
 
 /* Bonus for a white piece of `pieceType` on file f, rank r (0 = rank
@@ -815,7 +808,7 @@ function evaluate(pos: Position): Score {
     const at = piece * 64 + index64(sq);
     mg += sign * MG_VALUE[pieceType] + PSQ_MG[at];
     eg += sign * EG_VALUE[pieceType] + PSQ_EG[at];
-    phase += PHASE_INC[pieceType];
+    phase += PHASE_WEIGHT[pieceType];
   }
   const tapered = Math.min(phase, PHASE_MAX);
   const score =
@@ -901,11 +894,18 @@ interface Position {
   readonly previous: Position | null;
 }
 
-const castlingRight = (colour: Colour, kingside: boolean): Right =>
-  colour * 2 + (kingside ? 0 : 1);
-const hasRight = (rights: Rights, right: Right): boolean =>
-  ((rights >> right) & 1) !== 0;
-const isKingside = (right: Right): boolean => right % 2 === 0;
+/* The kingside or queenside castling Right of `colour`. */
+function castlingRight(colour: Colour, kingside: boolean): Right {
+  return colour * 2 + (kingside ? 0 : 1);
+}
+/* Is `right` among `rights`? */
+function hasRight(rights: Rights, right: Right): boolean {
+  return ((rights >> right) & 1) !== 0;
+}
+/* Is `right` a kingside right? */
+function isKingside(right: Right): boolean {
+  return right % 2 === 0;
+}
 
 // Where king and rook land, by Right: g1 c1 g8 c8, f1 d1 f8 d8.
 const CASTLE_KING_TO: readonly Square[] =
@@ -922,6 +922,7 @@ class Draft {
   readonly kingSq: [Square, Square];
   key: Key;
 
+  /* A copy of `pos`: its board, piece counts, king squares and key. */
   constructor(pos: Position) {
     this.board = pos.board.slice();
     this.pieceCount = pos.pieceCount.slice();
@@ -1023,8 +1024,10 @@ function isDraw(pos: Position): boolean {
     if (earlier.key === pos.key) return true;
   }
   const n = pos.pieceCount;
-  const count = (pieceType: PieceType) =>
-    n[makePiece(pieceType, WHITE)] + n[makePiece(pieceType, BLACK)];
+  /* How many pieces of `pieceType` both sides have. */
+  function count(pieceType: PieceType): number {
+    return n[makePiece(pieceType, WHITE)] + n[makePiece(pieceType, BLACK)];
+  }
   const minors = count(KNIGHT) + count(BISHOP);
   return count(PAWN) + count(ROOK) + count(QUEEN) === 0 && minors <= 1;
 }
@@ -1036,11 +1039,15 @@ function isDraw(pos: Position): boolean {
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 /* The words of a line, split at runs of whitespace. */
-const words = (line: string): string[] => line.trim().split(/\s+/);
+function words(line: string): string[] {
+  return line.trim().split(/\s+/);
+}
 
 /* `text` as a whole decimal integer, or `fallback` if it is not one. */
-const toInteger = (text: string | undefined, fallback: number): number =>
-  text !== undefined && /^[+-]?\d+$/.test(text) ? Number(text) : fallback;
+function toInteger(text: string | undefined, fallback: number): number {
+  return text !== undefined && /^[+-]?\d+$/.test(text)
+    ? Number(text) : fallback;
+}
 
 /* A new position from a FEN string, with no earlier positions. */
 function parseFen(fen: string): Position {
@@ -1205,8 +1212,10 @@ const PAWN_CAPTURE_OFFSETS: readonly (readonly number[])[] =
 const SLIDER_RAYS: readonly (readonly [PieceType, readonly number[]])[] =
   [[BISHOP, BISHOP_OFFSETS], [ROOK, ROOK_OFFSETS]];
 
-const isSlider = (pieceType: PieceType): boolean =>
-  pieceType >= BISHOP && pieceType <= QUEEN;
+/* Does `pieceType` keep stepping along its rays: bishop, rook or queen? */
+function isSlider(pieceType: PieceType): boolean {
+  return pieceType >= BISHOP && pieceType <= QUEEN;
+}
 
 /* The pseudo-legal moves of pos for the side to move, as a new array.
    King safety is checked by makeMove().
@@ -1223,12 +1232,12 @@ function generateMoves(pos: Position): Move[] {
   const startRank = us === WHITE ? 1 : 6;
   const promoRank = us === WHITE ? 7 : 0;
   // A pawn move, or its four promotions on the last rank.
-  const pawnMove = (from: Square, to: Square, type: MoveType): void => {
+  function pawnMove(from: Square, to: Square, type: MoveType): void {
     if (rankOf(to) === promoRank) {
       for (let promo = QUEEN; promo >= KNIGHT; promo--)
         moves.push(encodeMove(from, to, promo, 0));
     } else moves.push(encodeMove(from, to, 0, type));
-  };
+  }
 
   for (const sq of SQUARES) {
     const piece = board[sq];
@@ -1351,6 +1360,8 @@ function xorshift32(x: number): number {
   return (b ^ (b << 5)) | 0;
 }
 
+/* The Zobrist numbers drawn from a xorshift32 generator started at
+   `seed`, in the order described above. */
 function zobristKeys(seed: number) {
   const draws = new Int32Array(16 * 64 + 16 + 8 + 1);
   for (let i = 0, state = seed; i < draws.length; i++) {
@@ -1405,9 +1416,13 @@ type GoNumber = typeof GO_NUMBERS[number];
 /** A parsed "go" command: whichever of the numbers it gave, plus infinite. */
 type Go =
   { readonly [K in GoNumber]?: number } & { readonly infinite?: boolean };
-const isGoNumber = (word: string): word is GoNumber =>
-  (GO_NUMBERS as readonly string[]).includes(word);
+/* Is `word` one of the numbered fields of a "go" command? */
+function isGoNumber(word: string): word is GoNumber {
+  return (GO_NUMBERS as readonly string[]).includes(word);
+}
 
+/* The session a fresh engine starts in: the starting position, at
+   SKILL_MAX, not Chess960. */
 function newSession(): Session {
   return {
     pos: parseFen(START_FEN),
@@ -1557,6 +1572,8 @@ function perft(pos: Position, depth: number): number {
   return count;
 }
 
+/* Print the perft count under each legal move of `pos` to `depth`,
+   then the total, the time and the speed. */
 function perftDivide(
   pos: Position, depth: number, chess960: boolean, io: Io,
 ): void {
@@ -1591,6 +1608,8 @@ const BENCH_FENS: readonly string[] = [
   "1k1r4/pp1b1R2/3q2pp/4p3/2B5/4Q3/PPP2B2/2K5 b - - 0 1",
 ];
 
+/* Search every BENCH_FENS position to `depth` at SKILL_MAX and print
+   the node count of each, then the totals OpenBench reads. */
 function bench(depth: number, io: Io): void {
   const skill = skillFor(SKILL_MAX, 0);
   let totalNodes = 0, totalMs = 0;

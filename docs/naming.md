@@ -39,7 +39,6 @@ engine.ts declares `Move`, `MoveType`, `Square`, `Index64`, `File`,
 
 Taken from the references:
 
-- `qsearch`: SF, Chal, Pat (Gaia `quiescence`).
 - `parseFen`: Chal `parse_fen`; also lines up with `parseMove` and
   `parseGo`.
 - `parsePosition`: Chal and Gaia `parse_position`.
@@ -74,9 +73,9 @@ Bit-twiddling sits behind named helpers, as in SF `types.h`, Gaia
 Pedagog's own names, where the references disagree:
 
 - `limitReached` (SF/Chal `check_time` return nothing; Pat
-  `out_of_time`), `orderMoves`, `capturesByValue` (MVV-LVA), `infoLine`,
+  `out_of_time`), `orderMoves`, `infoLine`,
   `uciCommand`, `newSession`, `zobristKeys`, `moveToUci`, `encodeMove`.
-- The skill code (`skillFor`, `judge`, `blunder`, `randomMove`,
+- The skill code (`skillFor`, `judge`, `blunder`, `mateOrRandomMove`,
   `overlookedRootMoves`): only Gaia's `skill.rs` is close, and it shares
   Pedagog's ladder vocabulary (`rung`, `sees_move`).
 

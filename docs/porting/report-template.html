@@ -165,206 +165,200 @@ class, are numbered under it (20.1). Every interface field is
   <ol>
   <li><span class="n">20.1</span><code>new <b>Search</b>(limits: Limits, skill: Skill, io: SearchIo, unseen: Pv, startTime: Millis)</code>
     <span class="d">Starts with no nodes counted.</span></li>
-  <li><span class="n">20.2</span><code><b>root</b>(pos: Position, depth: number, hint: Pv): Line</code>
-    <span class="d">One iteration of <code>think</code>: the root searched to <code>depth</code>, trying <code>hint</code>, the previous depth&rsquo;s best line, first.</span></li>
-  <li><span class="n">20.3</span><code><b>search</b>(pos: Position, alpha: Score, beta: Score, depth: number, ply: number, hint: Pv): Line</code>
-    <span class="d">Negamax alpha-beta search to a fixed depth. It skips moves the skill fails to notice, and tries the previous depth&rsquo;s best line first.</span></li>
-  <li><span class="n">20.4</span><code><b>qsearch</b>(pos: Position, alpha: Score, beta: Score, ply: number, pliesLeft: number): Score</code>
-    <span class="d">Quiescence search: follows captures at a leaf until the position is quiet, at most <code>pliesLeft</code> deep.</span></li>
-  <li><span class="n">20.5</span><code><b>overlooks</b>(next: Position, move: Move, ply: number): boolean</code>
+  <li><span class="n">20.2</span><code><b>root</b>(pos: Position, depth: number): Line</code>
+    <span class="d">One iteration of <code>think</code>: the root searched to <code>depth</code>.</span></li>
+  <li><span class="n">20.3</span><code><b>search</b>(pos: Position, alpha: Score, beta: Score, depth: number, ply: number): Line</code>
+    <span class="d">Negamax alpha-beta search to a fixed depth. It skips moves the skill fails to notice, and judges a leaf as it stands.</span></li>
+  <li><span class="n">20.4</span><code><b>overlooks</b>(next: Position, move: Move, ply: number): boolean</code>
     <span class="d">Whether the player fails to notice a move. At the root the overlooked moves were chosen in advance; deeper, <code>seesMove</code> decides.</span></li>
-  <li><span class="n">20.6</span><code><b>countNodeAndCheckStop</b>(): boolean</code>
+  <li><span class="n">20.5</span><code><b>countNodeAndCheckStop</b>(): boolean</code>
     <span class="d">Counts a node and, every 1,024 nodes from depth 2 on, checks the limits. Returns whether to stop.</span></li>
-  <li><span class="n">20.7</span><code><b>limitReached</b>(): boolean</code>
+  <li><span class="n">20.6</span><code><b>limitReached</b>(): boolean</code>
     <span class="d">The node limit or hard time limit has been reached, or a stop has been asked for.</span></li>
   </ol></li>
 <li><span class="n">21</span><code><b>isMateScore</b>(score: Score): boolean</code>
   <span class="d">Whether a score is a mate score rather than an evaluation.</span></li>
-<li><span class="n">22</span><code><b>orderMoves</b>(pos: Position, moves: Pv, pvMove: Move): Move[]</code>
-  <span class="d">Returns the moves in a new order: the previous depth&rsquo;s best move, then captures by MVV-LVA, then quiet moves.</span></li>
+<li><span class="n">22</span><code><b>orderMoves</b>(pos: Position, moves: Pv): Move[]</code>
+  <span class="d">Returns the moves in a new order: captures first, then quiet moves, each in generated order.</span></li>
 <li><span class="n">23</span><code><b>isCapture</b>(pos: Position, move: Move): boolean</code>
   <span class="d">Whether the move takes a piece or promotes. Castling does not count.</span></li>
-<li><span class="n">24</span><code><b>capturesByValue</b>(pos: Position, moves: Pv): Move[]</code>
-  <span class="d">Just the captures and promotions, highest <code>captureScore</code> first. The sort is stable.</span></li>
-<li><span class="n">25</span><code><b>captureScore</b>(pos: Position, move: Move): number</code>
-  <span class="d">The MVV-LVA key: ten times the victim&rsquo;s value, plus any promotion, minus the attacker&rsquo;s value.</span></li>
-<li><span class="n">26</span><code><b>limitsFor</b>(go: Go, side: Colour, level: number): Limits</code>
+<li><span class="n">24</span><code><b>limitsFor</b>(go: Go, side: Colour, level: number): Limits</code>
   <span class="d">Turns a &ldquo;go&rdquo; command into search limits. Only the top level reads the clock; it keeps a one-second reserve.</span></li>
 </ol>
 
 <h3>S2 Skill levels</h3>
 <ol>
-<li><span class="n">27</span><code><b>rung</b>(depth: number, deeperPermille: number, blunderWindow: Score, blunderPermille: number, vision: number): Rung</code>
+<li><span class="n">25</span><code><b>rung</b>(depth: number, deeperPermille: number, blunderWindow: Score, blunderPermille: number, vision: number): Rung</code>
   <span class="d">Builds one ladder rung; each argument is one knob.</span></li>
-<li><span class="n">28</span><code><b>skillFor</b>(level: number, seed: number): Skill</code>
+<li><span class="n">26</span><code><b>skillFor</b>(level: number, seed: number): Skill</code>
   <span class="d">The frozen skill for a level (clamped to 1&ndash;10) and a seed.</span></li>
-<li><span class="n">29</span><code><b>depthFor</b>(pos: Position, skill: Skill): number</code>
+<li><span class="n">27</span><code><b>depthFor</b>(pos: Position, skill: Skill): number</code>
   <span class="d">The depth limit for this position: the rung&rsquo;s depth, plus one on a hashed share of positions.</span></li>
-<li><span class="n">30</span><code><b>judge</b>(pos: Position, skill: Skill): Score</code>
+<li><span class="n">28</span><code><b>judge</b>(pos: Position, skill: Skill): Score</code>
   <span class="d">The evaluation plus any blunder. This is what the search scores a leaf with.</span></li>
-<li><span class="n">31</span><code><b>blunder</b>(pos: Position, skill: Skill): Score</code>
+<li><span class="n">29</span><code><b>blunder</b>(pos: Position, skill: Skill): Score</code>
   <span class="d">The occasional misjudgement: on a hashed share of positions, up to <code>&plusmn;blunderWindow</code> centipawns.</span></li>
-<li><span class="n">32</span><code><b>seesMove</b>(after: Position, skill: Skill, move: Move, ply: number): boolean</code>
+<li><span class="n">30</span><code><b>seesMove</b>(after: Position, skill: Skill, move: Move, ply: number): boolean</code>
   <span class="d">Whether the player notices a move. Vision fades with ply, and captures and checks get a second chance.</span></li>
-<li><span class="n">33</span><code><b>overlookedRootMoves</b>(pos: Position, skill: Skill, rootMoves: Pv): Move[]</code>
+<li><span class="n">31</span><code><b>overlookedRootMoves</b>(pos: Position, skill: Skill, rootMoves: Pv): Move[]</code>
   <span class="d">The root moves the player misses. If it would miss every one, it sees them all.</span></li>
-<li><span class="n">34</span><code><b>randomMove</b>(pos: Position, skill: Skill, moves: Pv): Move</code>
+<li><span class="n">32</span><code><b>mateOrRandomMove</b>(pos: Position, skill: Skill, moves: Pv): Move</code>
   <span class="d">Level 1&rsquo;s move: mate in one if there is one, otherwise a hashed random choice.</span></li>
-<li><span class="n">35</span><code><b>givesMate</b>(pos: Position, move: Move): boolean</code>
+<li><span class="n">33</span><code><b>givesMate</b>(pos: Position, move: Move): boolean</code>
   <span class="d">Whether a legal move checkmates.</span></li>
-<li><span class="n">36</span><code><b>mix32</b>(x: number): number</code>
+<li><span class="n">34</span><code><b>mix32</b>(x: number): number</code>
   <span class="d">A 32-bit integer hash finaliser that scrambles bits. Returns an unsigned 32-bit number.</span></li>
 </ol>
 
 <h3>S3 Evaluation</h3>
 <ol>
-<li><span class="n">37</span><code><b>psqBonus</b>(pieceType: PieceType, f: File, r: Rank): readonly [mg: Score, eg: Score]</code>
+<li><span class="n">35</span><code><b>psqBonus</b>(pieceType: PieceType, f: File, r: Rank): readonly [mg: Score, eg: Score]</code>
   <span class="d">The placement bonus for a white piece of this type on this file and rank, for the middlegame and the endgame.</span></li>
-<li><span class="n">38</span><code><b>pieceSquareTables</b>(): readonly [mg: PsqTable, eg: PsqTable]</code>
+<li><span class="n">36</span><code><b>pieceSquareTables</b>(): readonly [mg: PsqTable, eg: PsqTable]</code>
   <span class="d">Tables of <code>psqBonus</code> for every piece and square. Black&rsquo;s are mirrored with <code>flipRank</code> and negated.</span></li>
-<li><span class="n">39</span><code><b>evaluate</b>(pos: Position): Score</code>
+<li><span class="n">37</span><code><b>evaluate</b>(pos: Position): Score</code>
   <span class="d">Static evaluation in centipawns for the side to move: material and placement, tapered from middlegame to endgame. It walks <code>SQUARES</code>.</span></li>
 </ol>
 
 <h3>S4 Chess rules and position</h3>
 <ol>
-<li><span class="n">40</span><code><b>castlingRight</b>(colour: Colour, kingside: boolean): Right</code>
+<li><span class="n">38</span><code><b>castlingRight</b>(colour: Colour, kingside: boolean): Right</code>
   <span class="d">A colour&rsquo;s kingside or queenside right.</span></li>
-<li><span class="n">41</span><code><b>hasRight</b>(rights: Rights, right: Right): boolean</code>
+<li><span class="n">39</span><code><b>hasRight</b>(rights: Rights, right: Right): boolean</code>
   <span class="d">Whether a castling right is held.</span></li>
-<li><span class="n">42</span><code><b>isKingside</b>(right: Right): boolean</code>
+<li><span class="n">40</span><code><b>isKingside</b>(right: Right): boolean</code>
   <span class="d">Whether a castling right is kingside.</span></li>
-<li><span class="n">43</span><code>class <b>Draft</b></code>
+<li><span class="n">41</span><code>class <b>Draft</b></code>
   <span class="d">The scratch copy <code>makeMove</code> works on (see the type).</span>
   <ol>
-  <li><span class="n">43.1</span><code>new <b>Draft</b>(pos: Position)</code>
+  <li><span class="n">41.1</span><code>new <b>Draft</b>(pos: Position)</code>
     <span class="d">Copies the board, piece counts, king squares and key.</span></li>
-  <li><span class="n">43.2</span><code><b>lift</b>(sq: Square): Piece</code>
+  <li><span class="n">41.2</span><code><b>lift</b>(sq: Square): Piece</code>
     <span class="d">Takes a piece off a square and returns it, keeping the counts and key in step.</span></li>
-  <li><span class="n">43.3</span><code><b>put</b>(sq: Square, piece: Piece): void</code>
+  <li><span class="n">41.3</span><code><b>put</b>(sq: Square, piece: Piece): void</code>
     <span class="d">Puts a piece on an empty square, keeping the counts, king squares and key in step.</span></li>
   </ol></li>
-<li><span class="n">44</span><code><b>makeMove</b>(pos: Position, move: Move): Position | null</code>
+<li><span class="n">42</span><code><b>makeMove</b>(pos: Position, move: Move): Position | null</code>
   <span class="d">The position after a move, or <code>null</code> if it leaves the mover&rsquo;s king in check. <code>pos</code> is not changed.</span></li>
-<li><span class="n">45</span><code><b>makeLegalMove</b>(pos: Position, move: Move): Position</code>
+<li><span class="n">43</span><code><b>makeLegalMove</b>(pos: Position, move: Move): Position</code>
   <span class="d">For callers that already know the move is legal, so they need no <code>null</code> check. Throws otherwise.</span></li>
-<li><span class="n">46</span><code><b>inCheck</b>(pos: Position): boolean</code>
+<li><span class="n">44</span><code><b>inCheck</b>(pos: Position): boolean</code>
   <span class="d">Whether the side to move is in check.</span></li>
-<li><span class="n">47</span><code><b>isDraw</b>(pos: Position): boolean</code>
+<li><span class="n">45</span><code><b>isDraw</b>(pos: Position): boolean</code>
   <span class="d">A draw by the fifty-move rule, a repetition or insufficient material. The repetition walk is bounded by <code>min(halfmoveClock, gamePly)</code>.</span>
   <ol>
-  <li><span class="n">47.1</span><code><b>count</b>(pieceType: PieceType): number</code>
+  <li><span class="n">45.1</span><code><b>count</b>(pieceType: PieceType): number</code>
     <span class="d">How many pieces of a type both sides have together.</span></li>
   </ol></li>
-<li><span class="n">48</span><code><b>words</b>(line: string): string[]</code>
+<li><span class="n">46</span><code><b>words</b>(line: string): string[]</code>
   <span class="d">The words of a line, split at runs of whitespace.</span></li>
-<li><span class="n">49</span><code><b>toInteger</b>(text: string | undefined, fallback: number): number</code>
+<li><span class="n">47</span><code><b>toInteger</b>(text: string | undefined, fallback: number): number</code>
   <span class="d"><code>text</code> as a whole decimal integer, or <code>fallback</code> if it is not one.</span></li>
-<li><span class="n">50</span><code><b>parseFen</b>(fen: string): Position</code>
+<li><span class="n">48</span><code><b>parseFen</b>(fen: string): Position</code>
   <span class="d">A new position, with no history, from a FEN string.</span></li>
-<li><span class="n">51</span><code><b>castlingFromFen</b>(board: Board, kingSq: KingSquares, field: string): { castlingRights: Rights; castle: Castle }</code>
+<li><span class="n">49</span><code><b>castlingFromFen</b>(board: Board, kingSq: KingSquares, field: string): { castlingRights: Rights; castle: Castle }</code>
   <span class="d">Reads the FEN castling field in KQkq, Shredder-FEN or X-FEN form, so Chess960 is covered.</span>
   <ol>
-  <li><span class="n">51.1</span><code><b>outermostRook</b>(rank: Rank, rook: Piece, edge: File, kingFile: File): File</code>
+  <li><span class="n">49.1</span><code><b>outermostRook</b>(rank: Rank, rook: Piece, edge: File, kingFile: File): File</code>
     <span class="d">The file of the outermost rook between the edge and the king, or &minus;1.</span></li>
   </ol></li>
-<li><span class="n">52</span><code><b>toFen</b>(pos: Position, chess960: boolean): string</code>
+<li><span class="n">50</span><code><b>toFen</b>(pos: Position, chess960: boolean): string</code>
   <span class="d">The position as a FEN string. Castling rights are written as file letters only for Chess960 rooks that are not in the corners.</span></li>
-<li><span class="n">53</span><code><b>moveToUci</b>(move: Move, chess960: boolean): string</code>
+<li><span class="n">51</span><code><b>moveToUci</b>(move: Move, chess960: boolean): string</code>
   <span class="d">A move in UCI notation, such as &ldquo;e2e4&rdquo;. Castling is written king-takes-rook in Chess960.</span></li>
-<li><span class="n">54</span><code><b>parseMove</b>(pos: Position, str: string, chess960: boolean): Move</code>
+<li><span class="n">52</span><code><b>parseMove</b>(pos: Position, str: string, chess960: boolean): Move</code>
   <span class="d">The legal move written as <code>str</code>, or <code>NO_MOVE</code>. Castling is accepted in either notation.</span></li>
-<li><span class="n">55</span><code><b>legalMoves</b>(pos: Position): Move[]</code>
+<li><span class="n">53</span><code><b>legalMoves</b>(pos: Position): Move[]</code>
   <span class="d">The legal moves, as a new array.</span></li>
-<li><span class="n">56</span><code><b>isSlider</b>(pieceType: PieceType): boolean</code>
+<li><span class="n">54</span><code><b>isSlider</b>(pieceType: PieceType): boolean</code>
   <span class="d">Whether a piece type keeps stepping along its rays: bishop, rook or queen.</span></li>
-<li><span class="n">57</span><code><b>generateMoves</b>(pos: Position): Move[]</code>
+<li><span class="n">55</span><code><b>generateMoves</b>(pos: Position): Move[]</code>
   <span class="d">The pseudo-legal moves; <code>makeMove</code> checks king safety. Pawns advance by <code>PAWN_STEP</code>; other pieces use <code>PIECE_OFFSETS</code>.</span>
   <ol>
-  <li><span class="n">57.1</span><code><b>pawnMove</b>(from: Square, to: Square, type: MoveType): void</code>
+  <li><span class="n">55.1</span><code><b>pawnMove</b>(from: Square, to: Square, type: MoveType): void</code>
     <span class="d">Adds a pawn move to the list, expanding a move to the last rank into its four promotions.</span></li>
   </ol></li>
-<li><span class="n">58</span><code><b>isSquareAttacked</b>(board: Board, sq: Square, by: Colour): boolean</code>
+<li><span class="n">56</span><code><b>isSquareAttacked</b>(board: Board, sq: Square, by: Colour): boolean</code>
   <span class="d">Whether a colour attacks a square. It looks outward from the square; <code>SLIDER_RAYS</code> says which sliders attack along each ray.</span></li>
 </ol>
 
 <h3>S5 Zobrist hashing</h3>
 <ol>
-<li><span class="n">59</span><code><b>xorshift32</b>(x: number): number</code>
+<li><span class="n">57</span><code><b>xorshift32</b>(x: number): number</code>
   <span class="d">The next state of a 32-bit xorshift generator.</span></li>
-<li><span class="n">60</span><code><b>zobristKeys</b>(seed: number): { zobPiece; zobCastle; zobEp; zobSide: Key }</code>
+<li><span class="n">58</span><code><b>zobristKeys</b>(seed: number): { zobPiece; zobCastle; zobEp; zobSide: Key }</code>
   <span class="s">stored as views of one <code>Int32Array</code> of 1,049 draws: 16&nbsp;&times;&nbsp;64 by <code>piece * 64 + index64</code>, 16 by <code>Rights</code>, 8 by <code>File</code>, then the side</span>
   <span class="d">The random numbers that are XORed into a position&rsquo;s key, drawn in a fixed order from a fixed-seed generator, so every machine gets the same keys.</span></li>
 </ol>
 
 <h3>S6 UCI</h3>
 <ol>
-<li><span class="n">61</span><code><b>isGoNumber</b>(word: string): word is GoNumber</code>
+<li><span class="n">59</span><code><b>isGoNumber</b>(word: string): word is GoNumber</code>
   <span class="d">Type guard: whether a word is one of the numbered &ldquo;go&rdquo; fields.</span></li>
-<li><span class="n">62</span><code><b>newSession</b>(): Session</code>
+<li><span class="n">60</span><code><b>newSession</b>(): Session</code>
   <span class="d">The starting position at level 10, not Chess960.</span></li>
-<li><span class="n">63</span><code><b>uciCommand</b>(session: Session, line: string, io: Io): Session</code>
+<li><span class="n">61</span><code><b>uciCommand</b>(session: Session, line: string, io: Io): Session</code>
   <span class="d">Handles one UCI command line and returns the session for the next one.</span>
   <ol>
-  <li><span class="n">63.1</span><code><b>onInfo</b>(info: Result): void</code>
+  <li><span class="n">61.1</span><code><b>onInfo</b>(info: Result): void</code>
     <span class="d">Prints a UCI &ldquo;info&rdquo; line for each depth that finishes during &ldquo;go&rdquo;.</span></li>
   </ol></li>
-<li><span class="n">64</span><code><b>parsePosition</b>(spec: string, chess960: boolean): Position</code>
+<li><span class="n">62</span><code><b>parsePosition</b>(spec: string, chess960: boolean): Position</code>
   <span class="d">The position from the arguments of a &ldquo;position&rdquo; command: &ldquo;startpos&rdquo; or a FEN, then any moves. Unknown moves are skipped.</span></li>
-<li><span class="n">65</span><code><b>parseGo</b>(tokens: readonly string[]): Go</code>
+<li><span class="n">63</span><code><b>parseGo</b>(tokens: readonly string[]): Go</code>
   <span class="d">The numbers and flags of a &ldquo;go&rdquo; command. Unknown words are skipped.</span></li>
-<li><span class="n">66</span><code><b>infoLine</b>(result: Result, chess960: boolean): string</code>
+<li><span class="n">64</span><code><b>infoLine</b>(result: Result, chess960: boolean): string</code>
   <span class="d">The UCI &ldquo;info&rdquo; line for one finished depth.</span></li>
-<li><span class="n">67</span><code><b>perft</b>(pos: Position, depth: number): number</code>
+<li><span class="n">65</span><code><b>perft</b>(pos: Position, depth: number): number</code>
   <span class="d">Counts the leaf nodes to a depth, as a test of the move generator.</span></li>
-<li><span class="n">68</span><code><b>perftDivide</b>(pos: Position, depth: number, chess960: boolean, io: Io): void</code>
+<li><span class="n">66</span><code><b>perftDivide</b>(pos: Position, depth: number, chess960: boolean, io: Io): void</code>
   <span class="d">Prints the perft count under each root move, then the total and the speed.</span></li>
-<li><span class="n">69</span><code><b>bench</b>(depth: number, io: Io): void</code>
+<li><span class="n">67</span><code><b>bench</b>(depth: number, io: Io): void</code>
   <span class="d">Searches a fixed set of positions at level 10. The total node count is the signature OpenBench reads.</span>
   <ol>
-  <li><span class="n">69.1</span><code><b>shouldStop</b>(): false</code>
+  <li><span class="n">67.1</span><code><b>shouldStop</b>(): false</code>
     <span class="d">Never stops the search.</span></li>
-  <li><span class="n">69.2</span><code><b>onInfo</b>(): void</code>
+  <li><span class="n">67.2</span><code><b>onInfo</b>(): void</code>
     <span class="d">Discards the per-depth reports.</span></li>
   </ol></li>
-<li><span class="n">70</span><code><b>printBoard</b>(pos: Position, skill: Skill, chess960: boolean, out: (line: string) =&gt; void): void</code>
+<li><span class="n">68</span><code><b>printBoard</b>(pos: Position, skill: Skill, chess960: boolean, out: (line: string) =&gt; void): void</code>
   <span class="d">The &ldquo;d&rdquo; command: prints the board, FEN, key and evaluation.</span></li>
 </ol>
 
 <h3>Start-up and I/O</h3>
 <ol>
-<li><span class="n">71</span><b>Main thread, command-line bench</b>
+<li><span class="n">69</span><b>Main thread, command-line bench</b>
   <span class="d">Runs bench directly, without a worker.</span>
   <ol>
-  <li><span class="n">71.1</span><code><b>io.out</b>(line: string): void</code>
+  <li><span class="n">69.1</span><code><b>io.out</b>(line: string): void</code>
     <span class="d">Prints to stdout.</span></li>
-  <li><span class="n">71.2</span><code><b>io.shouldStop</b>(): false</code>
+  <li><span class="n">69.2</span><code><b>io.shouldStop</b>(): false</code>
     <span class="d">Never stops.</span></li>
   </ol></li>
-<li><span class="n">72</span><b>Main thread, UCI loop</b>
+<li><span class="n">70</span><b>Main thread, UCI loop</b>
   <span class="d">Reads stdin and handles <code>stop</code>, <code>quit</code> and <code>isready</code> during a search itself; it passes everything else to the worker.</span>
   <ol>
-  <li><span class="n">72.1</span><code><b>worker.onmessage</b>(e: { data: string }): void</code>
+  <li><span class="n">70.1</span><code><b>worker.onmessage</b>(e: { data: string }): void</code>
     <span class="d">Prints the worker&rsquo;s output and notes when a search ends.</span></li>
-  <li><span class="n">72.2</span><code>(async () =&gt; â€¦)(): Promise&lt;void&gt;</code>
+  <li><span class="n">70.2</span><code>(async () =&gt; â€¦)(): Promise&lt;void&gt;</code>
     <span class="d">The stdin loop. It sets the shared stop flag for &ldquo;stop&rdquo; and &ldquo;quit&rdquo;.</span></li>
   </ol></li>
-<li><span class="n">73</span><b>Worker</b>
+<li><span class="n">71</span><b>Worker</b>
   <span class="d">Keeps the session and runs <code>uciCommand</code> for each line it receives.</span>
   <ol>
-  <li><span class="n">73.1</span><code><b>io.out</b>(line: string): void</code>
+  <li><span class="n">71.1</span><code><b>io.out</b>(line: string): void</code>
     <span class="d">Posts a line to the main thread.</span></li>
-  <li><span class="n">73.2</span><code><b>io.shouldStop</b>(): boolean</code>
+  <li><span class="n">71.2</span><code><b>io.shouldStop</b>(): boolean</code>
     <span class="d">Reads the shared stop flag. Until the main thread&rsquo;s flag arrives it reads a zeroed <code>Int32Array</code> of its own, so there is no <code>null</code> check.</span></li>
-  <li><span class="n">73.3</span><code><b>self.onmessage</b>(e: { data: unknown }): void</code>
+  <li><span class="n">71.3</span><code><b>self.onmessage</b>(e: { data: unknown }): void</code>
     <span class="d">Handles a command line, or replaces the stop flag with the main thread&rsquo;s shared one.</span></li>
   </ol></li>
-<li><span class="n">74</span><b>Browser main thread</b>
+<li><span class="n">72</span><b>Browser main thread</b>
   <span class="d">Drives the engine by hand through <code>globalThis.Pedagog</code>, without a worker.</span>
   <ol>
-  <li><span class="n">74.1</span><code><b>Pedagog.uci</b>(line: string): void</code>
+  <li><span class="n">72.1</span><code><b>Pedagog.uci</b>(line: string): void</code>
     <span class="d">Runs <code>uciCommand</code> and keeps the session it returns.</span></li>
-  <li><span class="n">74.2</span><code><b>Pedagog.setOutput</b>(fn: (line: string) =&gt; void): void</code>
+  <li><span class="n">72.2</span><code><b>Pedagog.setOutput</b>(fn: (line: string) =&gt; void): void</code>
     <span class="d">Chooses where output lines go.</span></li>
   </ol></li>
 </ol>
