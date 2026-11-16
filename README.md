@@ -62,20 +62,19 @@ be read on its own. Positions are never changed: `makeMove` returns a new one.
 |---|---|
 | Board representation | 0x88 mailbox, not bitboards; moves packed into 32-bit integers. |
 | Move generation | Pseudo-legal moves, with legality checked by making each move (copy/make); standard chess and Chess960. |
-| Search | Single-threaded negamax alpha-beta with iterative deepening; the previous iteration's best move first, then captures by MVV-LVA; a quiescence search of at most four captures past each leaf. |
+| Search | Single-threaded negamax alpha-beta with iterative deepening; captures and promotions first, then quiet moves, each in generated order; no quiescence search, so leaves are evaluated as they stand. |
 | Evaluation | Material and formula-based piece-square tables, tapered between middlegame and endgame; recomputed at each leaf. |
 | Position hashing | Zobrist hashing for repetition detection and deterministic skill-level variation, not a transposition table. |
 | Playing strength | Ten skill levels, ~100 Elo apart up to about Maia-1900, each with a depth limit, deliberate misjudgments, and reduced move vision. |
 
 **Deliberately omitted:** transposition tables, principal variation search
 (PVS), aspiration windows, null-move and reverse-futility pruning, late move
-reductions (LMR), killer and history heuristics, check extensions, delta
-pruning, and incremental evaluation.
+reductions (LMR), killer and history heuristics, check extensions, quiescence
+search, delta pruning, MVV-LVA capture ranking, and incremental evaluation.
 The evaluation uses neither PeSTO tables nor a neural network. These choices
 keep the engine small and educational; see the
 [COLOPHON](docs/COLOPHON.md#what-was-deliberately-left-out) for the historical
-measurements behind the search simplifications. Quiescence search and MVV-LVA,
-once left out, are back.
+measurements behind the search simplifications.
 
 The browser app supplies an opening book; the standalone engine has none.
 

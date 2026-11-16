@@ -47,7 +47,11 @@ Both styles also gained a short **quiescence search** (captures only, MVV-LVA
 ordered, at most four plies past a leaf) and better move ordering (the previous
 iteration's best move first, then MVV-LVA captures). Without quiescence the
 aggressive style's sacrifices are hopes rather than calculations; with it, a
-sacrifice that loses to a simple recapture is seen as such.
+sacrifice that loses to a simple recapture is seen as such. *(Later undone:
+`engine.ts` went back to one plain style and then to the search of Parts I and
+II — no quiescence, no previous-best-move hint, captures tried first in
+generated order. The aggressive style keeps all three in
+`src/variants/engine-aggressive.ts`.)*
 
 ### How aggression was measured
 
@@ -270,7 +274,8 @@ moves are judged, and book moves are not in the record.
 Even full strength blunders on 6.7 % of its moves by this yardstick: that is
 the horizon effect of a search without quiescence, a possible future addition.
 (Measured on the round-9 ladder. Part III added a quiescence search and a new
-ladder; these rates have not been re-measured.)
+ladder; the quiescence search has since been removed again, and these rates
+have not been re-measured.)
 
 ### The web app
 
@@ -433,7 +438,9 @@ history heuristics, check extension, quiescence search, delta pruning,
 MVV-LVA capture ranking and incremental evaluation. All of them were written,
 tested and then removed; the table above is what they cost. (Part III brought
 back a capped quiescence search and MVV-LVA ordering, which the aggressive
-style needs to calculate its sacrifices.) The evaluation is
+style needs to calculate its sacrifices; both have since left `engine.ts`
+again, and the aggressive style, now in `src/variants/engine-aggressive.ts`,
+keeps them.) The evaluation is
 formula-based piece-square tables — the brief said to try a naive PSQT first
 and PeSTO only if the engine turned out too weak, and it did not.
 
