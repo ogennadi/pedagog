@@ -2,13 +2,13 @@
 
 Run the commands below from the repository root.
 
-Match tools require Bun. `tools/match.js` wraps
+Match tools require Bun. `src/tools/match.js` wraps
 [cutechess-cli](https://github.com/cutechess/cutechess), and Maia matches also
-require `lc0` plus Maia network files. `tools/blunders.py`, `tools/style.py` and
-`tools/style-constrictor.py` need `python-chess`; `tools/plot.py` needs Matplotlib. Set executable
+require `lc0` plus Maia network files. `src/tools/blunders.py`, `src/tools/style.py` and
+`src/tools/style-constrictor.py` need `python-chess`; `src/tools/plot.py` needs Matplotlib. Set executable
 locations using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, and `STOCKFISH`, or pass
 paths on the command line where supported. Maia weights default to
-`tools/models/`.
+`src/tools/models/`.
 
 ## Running matches
 
@@ -29,7 +29,7 @@ current source. Compare an earlier engine explicitly with e.g.
 `bun run match prev:L10 L10 20 --previous-engine path/to/old/engine.ts
 --time 1 --seed 42 --tag old-vs-current-20261009`.
 
-Every match writes a PGN and a same-tag JSON metadata file under `tools/out/`.
+Every match writes a PGN and a same-tag JSON metadata file under `src/tools/out/`.
 Metadata records the wrapper invocation and exact cutechess argument vector,
 result, seed, opening-book hash, engine/tool/runtime hashes, Git revision/dirty
 status, runtime, and available CPU concurrency. Opening selection uses
@@ -40,17 +40,17 @@ longer appended to a shared history file.
 
 ## Analyzing results
 
-`tools/style.py` summarises how each player in a set of PGNs plays: an
+`src/tools/style.py` summarises how each player in a set of PGNs plays: an
 aggression score (3 × knowing sacrifices + checks, per 100 moves), sacrifices
 versus blunders, checks, how close its pieces stand to the enemy king, material
 imbalance, evaluation swings, score and game length:
 
 ```sh
-python tools/style.py tools/out/l5-vs-r5.pgn
+python src/tools/style.py src/tools/out/l5-vs-r5.pgn
 ```
 
 For a draft comparison of space-taking and constriction, use
-`python tools/style-constrictor.py --json tools/out/constrictor.json match.pgn`.
+`python src/tools/style-constrictor.py --json src/tools/out/constrictor.json match.pgn`.
 It reports enemy-half squares attacked outside enemy pawn control, the space
 edge over the opponent, the opponent's pseudo-legal mobility, and pawn advance.
 It samples positions after each player's own moves with at least 20 pieces.
@@ -61,13 +61,13 @@ Fit Elo only against an explicitly chosen PGN set. The tool intentionally does
 not glob all historical matches:
 
 ```sh
-bun tools/elo.js --anchor maia-1900=1755 --json tools/out/elo-preview.json \
-  tools/out/r10/r10-L2-vs-maia-1100.pgn tools/out/r10/r10-L3-vs-L2.pgn
-python tools/blunders.py --out tools/out/blunders-preview.json \
-  tools/out/r10/r10-L2-vs-L1.pgn
-python tools/style.py --json tools/out/style-preview.json tools/out/r10/r10-L5-vs-R5.pgn
-python tools/plot.py --elo tools/out/elo-preview.json --style tools/out/style-preview.json \
-  --out tools/out/skill-curve-preview.png
+bun src/tools/elo.js --anchor maia-1900=1755 --json src/tools/out/elo-preview.json \
+  src/tools/out/r10/r10-L2-vs-maia-1100.pgn src/tools/out/r10/r10-L3-vs-L2.pgn
+python src/tools/blunders.py --out src/tools/out/blunders-preview.json \
+  src/tools/out/r10/r10-L2-vs-L1.pgn
+python src/tools/style.py --json src/tools/out/style-preview.json src/tools/out/r10/r10-L5-vs-R5.pgn
+python src/tools/plot.py --elo src/tools/out/elo-preview.json --style src/tools/out/style-preview.json \
+  --out src/tools/out/skill-curve-preview.png
 ```
 
 For the published Elo dataset and reproduction instructions, see the
@@ -76,7 +76,7 @@ For the published Elo dataset and reproduction instructions, see the
 
 ## Comparing UCI output
 
-`tools/uci-diff.js` feeds the same UCI scripts (perft, searches at every
+`src/tools/uci-diff.js` feeds the same UCI scripts (perft, searches at every
 skill level and style, Chess960, bench) to `engine.ts` and to another engine,
 and compares the output line by line, ignoring timing. Use it to check a port,
 or that a refactor plays exactly as before:

@@ -1,6 +1,6 @@
 """Blunder rate per skill level, judged by Stockfish.
 
-    python tools/blunders.py [--engine PATH] [--depth 12] [--games-per-level 60] [--out docs/blunders.json] [pgn files...]
+    python src/tools/blunders.py [--engine PATH] [--depth 12] [--games-per-level 60] [--out docs/blunders.json] [pgn files...]
 
 Assumptions (stated so they can be argued with):
   * The judge is Stockfish at a fixed depth (default 12), evaluating the position before and
@@ -31,7 +31,7 @@ def main():
     ap.add_argument("--games-per-level", type=int, default=60)
     ap.add_argument("--levels", default="", help="comma-separated levels to judge (default: all found)")
     ap.add_argument("--merge", nargs="*", help="merge these per-level JSON files into --out instead of judging")
-    ap.add_argument("--out", default=os.path.join(HERE, "..", "docs", "blunders.json"))
+    ap.add_argument("--out", default=os.path.join(HERE, "..", "..", "docs", "blunders.json"))
     ap.add_argument("files", nargs="*")
     a = ap.parse_args()
 

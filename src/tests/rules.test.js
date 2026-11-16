@@ -227,7 +227,7 @@ test("the engine plays one plain style with no Aggressive option", () => {
 
 // engine.ts is read on phones, so no line may be wider than 80 columns.
 test("engine.ts lines fit in 80 columns", async () => {
-  const path = new URL("../engine.ts", import.meta.url);
+  const path = new URL("../../engine.ts", import.meta.url);
   const lines = (await Bun.file(path).text()).split(/\r?\n/);
   const wide = lines
     .map((line, i) => ({ line: i + 1, width: line.length }))

@@ -7,7 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve, dirname } from "node:path";
 
-const root = resolve(dirname(import.meta.path), "..");
+const root = resolve(dirname(import.meta.path), "..", "..");
 const [cmd, ...args] = process.argv.slice(2);
 if (!cmd) { console.log("usage: bun run diff <command> [args...]"); process.exit(2); }
 

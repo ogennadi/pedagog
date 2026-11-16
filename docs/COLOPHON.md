@@ -51,7 +51,7 @@ sacrifice that loses to a simple recapture is seen as such.
 
 ### How aggression was measured
 
-`tools/style.py` reads cutechess PGNs and reports, per 100 of a player's own
+`style.py` reads cutechess PGNs and reports, per 100 of a player's own
 moves: **knowing sacrifices** (its material balance drops by ≥ 2 pawns and
 stays down a move later, while its own evaluation of the move was ≥ −0.5),
 **blunders** (the same drop when its evaluation already said it was losing),
@@ -96,7 +96,7 @@ below the top, so a level is the same opponent on any machine and under any
 load. The two ladders were tuned over five rounds of ~15,000 games each, then
 measured once more on the committed engine (round 10, below).
 
-Round 10: 61 pairings of 300 games (18,300 games) — every level against the level below in its own ladder, against the other style's level of the same number, and against Maia-1100 (all levels), Maia-1500 (8–10) and Maia-1900 (6–10); level 2 of each style also against level 1. Depth-bounded on both sides, so the matches are deterministic: rerunning a pairing replays the same games. `tools/elo.js` fits one rating to everything, anchored on Maia-1900 = 1755; the inputs are archived in `docs/calibration-baseline/round-10-pgns.zip`. Depth is *plies + share of positions searched one ply deeper*; vision is per 1024. Aggression is `tools/style.py`'s score (3 × knowing sacrifices + checks per 100 moves) in the games between the two styles.
+Round 10: 61 pairings of 300 games (18,300 games) — every level against the level below in its own ladder, against the other style's level of the same number, and against Maia-1100 (all levels), Maia-1500 (8–10) and Maia-1900 (6–10); level 2 of each style also against level 1. Depth-bounded on both sides, so the matches are deterministic: rerunning a pairing replays the same games. `elo.js` fits one rating to everything, anchored on Maia-1900 = 1755; the inputs are archived in `docs/calibration-baseline/round-10-pgns.zip`. Depth is *plies + share of positions searched one ply deeper*; vision is per 1024. Aggression is `style.py`'s score (3 × knowing sacrifices + checks per 100 moves) in the games between the two styles.
 
 | level | target | Pedagog depth | blunder | vision | **Elo** | aggression | Reference depth | blunder | vision | **Elo** | aggression |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -218,7 +218,7 @@ historical record.
 
 Method: every level played 300 games against the level below and 300 against
 each of Maia-1100 and Maia-1900 (some also Maia-1500), level 10 at 10+0.1,
-all others depth-bounded; `tools/elo.js` fits one rating to all results
+all others depth-bounded; `elo.js` fits one rating to all results
 (Elo logistic model, draws as half points) with bootstrap intervals. The
 scale is anchored on **Maia-1900 = 1755**, the Lichess classical rating of
 the bot that runs that network (`maia9`: 1755, RD 45, 141,012 games on
@@ -254,7 +254,7 @@ by Part III's; the round-9 ratings remain in the table above.
 
 ### Blunder rate
 
-Judge: Stockfish 19 at depth 12 (`tools/blunders.py`), on 80 games per level
+Judge: Stockfish 19 at depth 12 (`blunders.py`), on 80 games per level
 drawn from the calibration matches. Assumptions: centipawns → win probability
 by Lichess's formula; a **blunder** costs ≥ 20 percentage points, a
 **mistake** 10–20; positions already beyond ±600 cp are not counted (a lost
@@ -274,17 +274,17 @@ ladder; these rates have not been re-measured.)
 
 ### The web app
 
-`web/` (`web/index.html`): chessground for the board, cm-chess for legality
+The app: chessground for the board, cm-chess for legality
 (including Chess960 castling), the engine in a Web Worker. Human vs bot or
 bot vs bot, a level per bot, standard or Chess960 (position 0–959 or random,
 selector shown only for that variant), move list with the opening's name,
 captured pieces with material balance, elapsed time per side (never
 enforced), "Open in Lichess" at any moment (PGN with `[Variant]`/`[FEN]`
 tags), copy PGN. In standard chess bots at levels 2–10 open from
-`web/book.js`, a hundred lines in SAN — 75 mainstream openings (Ruy Lopez to
+`book.js`, a hundred lines in SAN — 75 mainstream openings (Ruy Lopez to
 Catalan, ECO-tagged) and 25 offbeat ones (King's Gambit, Englund, Grob, …) —
 picking at random among the lines that still match the game; the engine
-itself has no book. *(Later replaced: `web/book.js` is now a weighted move
+itself has no book. *(Later replaced: `book.js` is now a weighted move
 tree at most six plies deep — wide rather than deep, with offbeat first moves
 such as 1.Na3 and 1.g4 (its rook-pawn lines, 1.h4 … 2.h5 and 1.a4 … 2.a5 for
 both colours, were later dropped) — and
@@ -312,19 +312,19 @@ chess.mjs as BSD-2-Clause, and cm-chess and cm-pgn as MIT. The combined web
 app includes chessground and is distributed under GPL-3.0-or-later terms; the original Pedagog-authored code remains dedicated
 to CC0 separately. The
 standalone engine (`engine.ts`) is independent of the web dependencies. See
-`LICENSE` and `docs/THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
+`LICENSE` and `THIRD_PARTY_NOTICES.md`; vendor components are not relicensed.
 
 ### Tools
 
-`tools/match.js` (cutechess wrapper; see [`tools/README.md`](../tools/README.md) for executable
+`match.js` (cutechess wrapper; see the [tools README](../src/tools/README.md) for executable
 configuration, seeded runs, fixed `st=1`, and previous-engine comparisons;
 also `L10@6` for a fixed depth without a clock),
-`tools/elo.js` (joint Elo fit), `tools/blunders.py` (Stockfish judge),
-`tools/style.py` (style statistics, Part III; `R1`..`R10` in `match.js` are
+`elo.js` (joint Elo fit), `blunders.py` (Stockfish judge),
+`style.py` (style statistics, Part III; `R1`..`R10` in `match.js` are
 the plain style),
-`tools/plot.py` (the figure), `tools/serve.js` (static server with the
-cross-origin-isolation headers), `tools/build.js` (assembles `dist/`).
-Match PGNs and metadata land in `tools/out/` (ignored). Each run has an
+`plot.py` (the figure), `serve.js` (static server with the
+cross-origin-isolation headers), `build.js` (assembles `dist/`).
+Match PGNs and metadata land in the tools' `out/` directory (ignored). Each run has an
 independent tag; existing files are not overwritten by default.
 
 ### The Part II brief
@@ -441,11 +441,12 @@ and PeSTO only if the engine turned out too weak, and it did not.
 
 - `engine.ts` — the engine, one file, read top to bottom (called `pedagog.js` before Part III and
   `engine.js` until it moved to TypeScript; the browser still loads `engine.js`, which
-  `tools/engine-js.js` makes from `engine.ts` by removing the types).
-- `web/` — the web app (Part II): `index.html`, scripts, styles, the service worker and the
-  vendored libraries; `bun run web` serves it with the engine beside it.
+  the tools make from `engine.ts` by removing the types).
+- `src/` — all other code: the web app (Part II: pages, scripts, styles, the service worker
+  and the vendored libraries; `bun run web` serves it with the engine beside it), the tests,
+  engine variants, and the tools (match runner, Elo fit, blunder judge, style statistics,
+  plot, server, build).
 - `dist/` — generated, ignored: `bun run build` assembles the deployable site there.
-- `tools/` — match runner, Elo fit, blunder judge, style statistics, plot, server, build.
 - `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
   `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs
     behind the published fit.
@@ -455,7 +456,7 @@ and PeSTO only if the engine turned out too weak, and it did not.
 The original development suite used an isolated VM harness and frozen
 transcript fixtures to exercise search, UCI, fake-clock timing, evaluation,
 perft, and make/unmake behavior. Those additional unit tests and fixtures have
-since been removed. The retained `bun test` suite runs `tests/rules.test.js`,
+since been removed. The retained `bun test` suite runs `rules.test.js`,
 which checks move legality, position consistency after each move, draw
 detection, and perft, plus a few search and UCI-session checks (mate in one,
 interrupted search, time limits, options carrying over between commands); it

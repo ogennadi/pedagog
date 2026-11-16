@@ -10,7 +10,7 @@
    Runs in Bun, which runs TypeScript directly (`bun engine.ts`), or
    in a browser Web Worker. Browsers cannot run TypeScript, so the
    web app gets engine.js, this file with its types removed
-   (tools/engine-js.js does that for `bun run web` and
+   (src/tools/engine-js.js does that for `bun run web` and
    `bun run build`). Type-check it with `bun run check`.
 ================================================================
 
@@ -577,7 +577,7 @@ function settings(depth: number, deeperPermille: number, blunderWindow: Score,
    was rated 1755 there, and the fit is anchored on it (see
    docs/COLOPHON.md). Measured in 28 pairings of 300 games: each level
    against the one below and against Maia-1100, -1500 and -1900, fitted
-   by tools/elo.js. Every level is a depth, never a time budget, so it
+   by src/tools/elo.js. Every level is a depth, never a time budget, so it
    plays the same on any machine. Level n is at index n - 1; level 1,
    the random mover, ignores its settings. */
 const LEVEL_SETTINGS: readonly LevelSettings[] = [
@@ -1638,7 +1638,7 @@ function printBoard(
 /* ---- Start-up and I/O ---------------------------------------------
    Search is single-threaded, but normal UCI operation uses two
    threads: the main thread reads input and the worker searches.
-   In a browser, the page is the main thread (see web/index.html).
+   In a browser, the page is the main thread (see src/web/index.html).
    The direct Bun bench command below runs without a worker.
 
    Search is synchronous: the worker cannot process another message

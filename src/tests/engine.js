@@ -6,7 +6,7 @@ import { engineJs } from "../tools/engine-js.js";
 // An isolated non-Bun host avoids stdin/workers and keeps test access
 // to internals out of the engine's public UCI interface. A .ts engine is
 // run as the engine.js the browser gets.
-export function engine(path = resolve(import.meta.dir, "..", "engine.ts")) {
+export function engine(path = resolve(import.meta.dir, "..", "..", "engine.ts")) {
   let time = 0;
   const output = [];
   const context = createContext({

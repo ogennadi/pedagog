@@ -9,7 +9,7 @@ export const DEFAULT_PREFS = Object.freeze({ theme: "dark", pieces: "cburnett", 
 // them, as recorded in lila's COPYING.md, leaving out those without a licence text (alpha, chess7,
 // companion, governor, leipzig, reillycraig, riohacha); plus meridian and meridian_shaded
 // (kmar/chess_svg_piece_sets) and kosal (philatype/kosal). Files are in
-// web/vendor/pieces/<set>/; see LICENSES.md there. `nonCommercial` sets may not be used
+// src/web/vendor/pieces/<set>/; see LICENSES.md there. `nonCommercial` sets may not be used
 // commercially (CC BY-NC-SA), which the settings page points out.
 export const PIECE_SETS = [
   ["anarcandy", "CC BY-NC-SA 4.0"], ["caliente", "CC BY-NC-SA 4.0"],

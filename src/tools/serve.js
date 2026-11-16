@@ -1,5 +1,5 @@
-// Tiny static server for the web app:  bun tools/serve.js [port]   (or: bun run web)
-// Serves web/ as the site root, plus the licence files (LICENSE, docs/THIRD_PARTY_NOTICES.md)
+// Tiny static server for the web app:  bun src/tools/serve.js [port]   (or: bun run web)
+// Serves src/web/ as the site root, plus the licence files (LICENSE, docs/THIRD_PARTY_NOTICES.md)
 // and engine.js (engine.ts without its types, made afresh for each request), which is the same
 // layout `bun run build` puts in dist/. Sends the cross-origin isolation headers so
 // SharedArrayBuffer is available and "stop" can interrupt a running search.
@@ -7,8 +7,8 @@ import { resolve, dirname, extname, normalize } from "node:path";
 import { existsSync, statSync } from "node:fs";
 import { engineJs } from "./engine-js.js";
 
-const root = resolve(dirname(Bun.main), "..");
-const web = resolve(root, "web");
+const root = resolve(dirname(Bun.main), "..", "..");
+const web = resolve(root, "src", "web");
 // Site path -> repository file, for the licence files served beside index.html.
 const LICENCE_FILES = { "/LICENSE": "LICENSE", "/THIRD_PARTY_NOTICES.md": "docs/THIRD_PARTY_NOTICES.md" };
 const port = parseInt(process.argv[2] || "8080");

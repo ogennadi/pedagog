@@ -32,16 +32,15 @@ The repository is laid out as:
 - `engine.ts` — the engine, the only code at the top level. It is written to
   translate line by line into other languages; see the
   [porting notes](docs/porting/README.md#how-enginets-is-written-for-porting).
-- `web/` — the web app (`index.html`, its scripts and styles, the service
-  worker, vendored libraries).
-- `tests/` — `bun test`; `tools/` — match runner, Elo fit, style statistics,
-  plots, server, build, UCI diff; `docs/` — the COLOPHON (how it was made and
-  measured), calibration data and figures, [naming](docs/naming.md) and
-  [porting](docs/porting/README.md) notes.
+- `src/` — all other code: the web app (pages, scripts, styles, the service
+  worker, vendored libraries), the tests, engine variants, and the tools
+  (match runner, Elo fit, style statistics, plots, server, build, UCI diff).
+- `docs/` — the COLOPHON (how it was made and measured), calibration data and
+  figures, [naming](docs/naming.md) and [porting](docs/porting/README.md) notes.
 - `ports/` — throwaway ports to other languages, ignored by Git.
 
-`bun run web` serves `web/` with the engine beside it as `engine.js` (`engine.ts`
-with its types removed by `tools/engine-js.js`, comments kept), the same layout
+`bun run web` serves the web app with the engine beside it as `engine.js`
+(`engine.ts` with its types removed, comments kept), the same layout
 `bun run build` writes to `dist/`: deploy the contents of `dist/` as the site
 root. `dist/` is generated and ignored by Git.
 
@@ -109,7 +108,7 @@ go movetime 1000
 
 ## Calibration and analysis
 
-See [`tools/README.md`](tools/README.md) for match setup and analysis commands,
+See the [tools README](src/tools/README.md) for match setup and analysis commands,
 the [calibration archive](docs/calibration-baseline/README.md) for reproducing
 the published Elo fit, and [`COLOPHON.md`](docs/COLOPHON.md) for the measurement
 method and interpretation.

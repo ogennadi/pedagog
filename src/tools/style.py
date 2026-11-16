@@ -1,6 +1,6 @@
 """Playing-style statistics per player, from cutechess PGNs.
 
-    python tools/style.py [--stockfish PATH --depth 10] [--json out.json] tools/out/some-match.pgn [...]
+    python src/tools/style.py [--stockfish PATH --depth 10] [--json out.json] src/tools/out/some-match.pgn [...]
 
 For each player name found in the PGNs it reports, per 100 of that player's moves:
   * aggression: 3 x sacrifices + checks, a single number for comparing styles (a

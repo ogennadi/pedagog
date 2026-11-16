@@ -5,10 +5,10 @@ import { availableParallelism } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
 const here = dirname(Bun.main);
-const root = resolve(here, "..");
+const root = resolve(here, "..", "..");
 const defaultEngine = resolve(root, "engine.ts");
 const book = resolve(here, "8moves_v3.epd");
-const help = `Usage: bun tools/match.js <A> <B> <even-games> [options]
+const help = `Usage: bun src/tools/match.js <A> <B> <even-games> [options]
 
 Players: L1..L10 (Pedagog, aggressive style), R1..R10 (Pedagog, plain reference style,
          Aggressive=false), L10@<depth>, prev:L1..L10, maia-1100|maia-1500|maia-1900
@@ -19,7 +19,7 @@ Options:
   --seed INTEGER            cutechess opening RNG seed (default: 1)
   --concurrency N           Parallel games (default: min(10, CPU count))
   --tag NAME                Output basename (must be new unless --force)
-  --out DIR                 Output directory (default: tools/out)
+  --out DIR                 Output directory (default: src/tools/out)
   --force                   Replace only this run's PGN and metadata files
   --help                    Show this help
 

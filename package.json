@@ -7,13 +7,13 @@
     "start": "bun engine.ts",
     "bench": "bun engine.ts bench",
     "perft": "bun engine.ts perft",
-    "check": "tsc -p .",
-    "web": "bun tools/serve.js",
-    "build": "bun tools/build.js",
-    "test": "bun test tests/rules.test.js tests/book.test.js",
-    "match": "bun tools/match.js",
-    "elo": "bun tools/elo.js",
-    "diff": "bun tools/uci-diff.js"
+    "check": "tsc --noEmit --strict --target ES2022 --lib ES2022 --erasableSyntaxOnly --noUnusedLocals --noUnusedParameters engine.ts",
+    "web": "bun src/tools/serve.js",
+    "build": "bun src/tools/build.js",
+    "test": "bun test src/tests/rules.test.js src/tests/book.test.js",
+    "match": "bun src/tools/match.js",
+    "elo": "bun src/tools/elo.js",
+    "diff": "bun src/tools/uci-diff.js"
   },
   "private": true,
   "devDependencies": {

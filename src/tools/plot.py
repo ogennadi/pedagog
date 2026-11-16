@@ -1,10 +1,10 @@
 """Plot the skill ladders: rating per level and the Elo gained over the previous level, for
 both styles; and, in a second figure, how aggressively each style plays at each level.
 
-    python tools/plot.py [--elo docs/skill-curve.json] [--style docs/style.json]
+    python src/tools/plot.py [--elo docs/skill-curve.json] [--style docs/style.json]
                          [--out docs/skill-curve.png] [--style-out docs/style.png]
 
---elo is the output of tools/elo.js --json, --style that of tools/style.py --json. Players
+--elo is the output of src/tools/elo.js --json, --style that of src/tools/style.py --json. Players
 L2..L10 are the aggressive style (Pedagog's default), R2..R10 the plain reference style.
 Level 1, the random mover, is left out: it is ~800 Elo below level 2 and would flatten the rest.
 """
@@ -15,7 +15,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DOCS = os.path.join(HERE, "..", "docs")
+DOCS = os.path.join(HERE, "..", "..", "docs")
 BG, INK, GREY, GRID = "#fcfcfb", "#3a3a38", "#8a8a86", "#e8e8e5"
 STYLES = [("L", "Pedagog (aggressive)", "#d6452a"), ("R", "Reference (plain)", "#2a78d6")]
 LEVELS = range(2, 11)

@@ -1,6 +1,6 @@
 // Fit Elo ratings to only the explicitly supplied PGNs; do not mix calibration rounds by default.
 //
-//   bun tools/elo.js [--anchor maia-1900=1755] [--anchor-note "..."] [--only L,maia] [--json docs/skill-curve.json] [files...]
+//   bun src/tools/elo.js [--anchor maia-1900=1755] [--anchor-note "..."] [--only L,maia] [--json docs/skill-curve.json] [files...]
 //
 // Model: Elo's logistic expectation E = 1 / (1 + 10^(-(Ra - Rb) / 400)); a draw counts half.
 // Ratings are found by iterating each player's rating so its expected total score matches its
@@ -20,8 +20,8 @@ const only = opt("--only", "").split(",").filter(Boolean);
 const jsonOut = opt("--json", "");
 let files = args.filter((x, i) => !x.startsWith("--") && !(i > 0 && args[i - 1].startsWith("--")));
 if (files.length === 0) {
-  console.error("Pass the PGN files to fit explicitly; refusing to combine every historical file in tools/out.");
-  console.error("Example: bun tools/elo.js --anchor maia-1900=1755 tools/out/r9-L2-vs-L1.pgn ...");
+  console.error("Pass the PGN files to fit explicitly; refusing to combine every historical file in src/tools/out.");
+  console.error("Example: bun src/tools/elo.js --anchor maia-1900=1755 src/tools/out/r9-L2-vs-L1.pgn ...");
   process.exit(2);
 }
 files = [...new Set(files.map((file) => resolve(file)))];

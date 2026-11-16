@@ -31,7 +31,7 @@ The file translates line by line into most languages:
 
 ### TypeScript features it does not use
 - `enum` and `namespace`. They are the TypeScript features that generate JavaScript
-  rather than being erased, so `tsconfig.json` forbids them (`erasableSyntaxOnly`):
+  rather than being erased, so `bun run check` forbids them (`erasableSyntaxOnly`):
   deleting the types from engine.ts must leave the browser's engine.js. Pieces,
   colours and move flags are plain integer constants (`PAWN = 1`,
   `type | colour << 3`), which every language has.
@@ -115,4 +115,4 @@ The file translates line by line into most languages:
 - Racket: `C:\Program Files\Racket\Racket.exe` and `raco.exe` (not on PATH)
 - Python 3.13 (`python` on PATH)
 - Go 1.24 (`go` on PATH)
-- Bun 1.4 (`bun`) runs engine.ts and tools/uci-diff.js
+- Bun 1.4 (`bun`) runs engine.ts and src/tools/uci-diff.js

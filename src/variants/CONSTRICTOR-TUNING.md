@@ -1,6 +1,6 @@
 # Constrictor tuning log
 
-Goal: a variant of Pedagog (`variants/engine-constrictor.ts`) whose space-taking,
+Goal: a variant of Pedagog (`src/variants/engine-constrictor.ts`) whose space-taking,
 constricting style you can *feel within a single game*, as with the Aggressive
 campaign (COLOPHON, Part III). `engine.ts` stays untouched.
 
@@ -8,14 +8,14 @@ campaign (COLOPHON, Part III). `engine.ts` stays untouched.
 
 - **Yardstick:** Maia-1900 (lc0, nodes=1).
 - **Subject:** the variant at Skill_Level 10.
-- **Openings:** the 198 lines of the web book (`tools/out/tune/book6.pgn`, ≤ 6 plies),
+- **Openings:** the 198 lines of the web book (`src/tools/out/tune/book6.pgn`, ≤ 6 plies),
   `-repeat`, `-srand 7`.
-- **Adjudication:** the same as `tools/match.js`.
+- **Adjudication:** the same as `src/tools/match.js`.
 - **Runner:** session file `tune.js` (cutechess, 12 concurrent games), which passes the
   `Constrictor_*` UCI spin options. It appends one line per run to
-  `tools/out/tune-results.jsonl`.
+  `src/tools/out/tune-results.jsonl`.
 - **Metrics:**
-  - `tools/style-constrictor.py`: space, space edge, opponent mobility, pawn advance.
+  - `src/tools/style-constrictor.py`: space, space edge, opponent mobility, pawn advance.
   - Session file `feel.py`, which reads own moves 10–35:
     - `adv`: own pawns in the enemy half
     - `ram`: own pawns in the enemy half blocked by an enemy pawn
