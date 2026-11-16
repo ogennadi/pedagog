@@ -19,6 +19,9 @@
 //            by the most valuable such piece                       6
 //   LEAVE    another of our pieces is en prise after the move,
 //            by the most valuable such piece                       6
+//   LOSS     how much worse the move is than the best one by a 2-ply
+//            search (Pedagog's level 10 evaluation): 0 (the best),
+//            up to 25, 50, 100, 200 or 400 centipawns, or more     7
 // Phase: endgame if the material phase (knight and bishop 1, rook 2, queen 4; 24 at the start)
 // is 8 or less, else opening before ply 30, else middlegame.
 // "En prise": attacked by a cheaper enemy piece, or attacked and not defended (x-rays and pins
@@ -31,17 +34,35 @@ import type { TestGame } from "./testset.ts";
 
 const e = engine();
 export const chess = e.read(`({ parseFen, generateMoves, makeMove, legalMoves, makeLegalMove, fromSq, toSq,
-  promoType, moveType, typeOf, index64, inCheck, parseSquare, moveToUci, FLAG_CASTLE, FLAG_EP })`);
+  promoType, moveType, typeOf, index64, inCheck, parseSquare, moveToUci, FLAG_CASTLE, FLAG_EP,
+  Search, skillFor, INF })`);
 
 export const TO = 0, FROM = 1152, CAPTURE = 2304, RECAPTURE = 2340, CHECK = 2341, PROMO = 2342, CASTLE = 2346,
-  HANG = 2348, RESCUE = 2354, THREAT = 2360, FORK = 2366, DEFEND = 2372, LEAVE = 2378, FEATURES = 2384;
+  HANG = 2348, RESCUE = 2354, THREAT = 2360, FORK = 2366, DEFEND = 2372, LEAVE = 2378, LOSS = 2384, FEATURES = 2391;
+const LOSS_LIMITS = [0, 25, 50, 100, 200, 400];
+const SKILL = chess.skillFor(10, 0);
+const LIMITS = { depth: 100, nodes: 0, softMs: 2 ** 31 - 1, hardMs: 2 ** 31 - 1 };
+const QUIET_IO = { now: () => 0, shouldStop: () => false, onInfo: () => {} };
+
+/* The value of the position `next`, just reached by our move, for us: minus the opponent's best
+   reply one ply on, as Pedagog's level 10 judges it. */
+export function valueAfter(next: any): number {
+  const search = new chess.Search(LIMITS, SKILL, QUIET_IO, [], 0);
+  return -search.search(next, -chess.INF, chess.INF, 1, 1).score;
+}
+
+/* The LOSS feature for a move `loss` centipawns worse than the best. */
+function lossFeature(loss: number): number {
+  const bucket = LOSS_LIMITS.findIndex((limit) => loss <= limit);
+  return LOSS + (bucket === -1 ? LOSS_LIMITS.length : bucket);
+}
 const PHASES = ["opening", "middlegame", "endgame"];
 const PHASE_WEIGHT = [0, 0, 1, 1, 2, 4, 0];
-const VALUE = [0, 1, 3, 3, 5, 9, 100];
-const KNIGHT_STEPS = [-33, -31, -18, -14, 14, 18, 31, 33];
-const KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
-const DIAGONALS = [-17, -15, 15, 17];
-const LINES = [-16, -1, 1, 16];
+export const VALUE = [0, 1, 3, 3, 5, 9, 100];
+export const KNIGHT_STEPS = [-33, -31, -18, -14, 14, 18, 31, 33];
+export const KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
+export const DIAGONALS = [-17, -15, 15, 17];
+export const LINES = [-16, -1, 1, 16];
 
 /* The value of the cheapest piece of colour `by` attacking square `sq` of the 0x88 `board`, or 0. */
 export function cheapestAttacker(board: Int8Array, sq: number, by: number): number {
@@ -69,13 +90,13 @@ export function cheapestAttacker(board: Int8Array, sq: number, by: number): numb
 }
 
 /* Is a piece worth `value` on `sq` en prise to colour `by`, defended by colour `defender`? */
-function enPrise(board: Int8Array, sq: number, value: number, by: number, defender: number): boolean {
+export function enPrise(board: Int8Array, sq: number, value: number, by: number, defender: number): boolean {
   const attacker = cheapestAttacker(board, sq, by);
   return attacker > 0 && (attacker < value || cheapestAttacker(board, sq, defender) === 0);
 }
 
 /* The squares that a piece of `type` and colour `colour` on `sq` attacks on `board`. */
-function attacks(board: Int8Array, sq: number, type: number, colour: number): number[] {
+export function attacks(board: Int8Array, sq: number, type: number, colour: number): number[] {
   const steps = (dirs: number[]) => dirs.map((d) => sq + d).filter((s) => (s & 0x88) === 0);
   const rays = (dirs: number[]) => dirs.flatMap((d) => {
     const seen: number[] = [];
@@ -97,7 +118,7 @@ function attacks(board: Int8Array, sq: number, type: number, colour: number): nu
 
 /* The type of the most valuable piece of colour `us` on `board`, other than its king and the
    piece on `skip`, that is en prise, or 0. */
-function worstEnPrise(board: Int8Array, us: number, skip: number): number {
+export function worstEnPrise(board: Int8Array, us: number, skip: number): number {
   let worst = 0;
   for (let sq = 0; sq < 128; sq++) {
     if ((sq & 0x88) !== 0 || sq === skip) continue;
@@ -125,6 +146,7 @@ export function moveFeatures(pos: any, lastTo: number, ply: number): { moves: nu
   const threatenedBefore = worstEnPrise(board, us, -1);
   const moves: number[] = [];
   const features: number[][] = [];
+  const values: number[] = [];
   for (const move of chess.generateMoves(pos) as number[]) {
     const next = chess.makeMove(pos, move);
     if (next === null) continue;
@@ -167,8 +189,10 @@ export function moveFeatures(pos: any, lastTo: number, ply: number): { moves: nu
     if (chess.inCheck(next)) f.push(CHECK);
     moves.push(move);
     features.push(f);
+    values.push(valueAfter(next));
   }
-  return { moves, features };
+  const best = Math.max(...values);
+  return { moves, features: features.map((f, i) => [...f, lossFeature(best - values[i])]) };
 }
 
 /* The legal move of `pos` written `uci` ("e1g1" for castling), or null. */
@@ -214,16 +238,22 @@ function mix32(x: number): number {
   return (b ^ (b >>> 16)) >>> 0;
 }
 
+/** One sampled position: the position, its ply, where the opponent's last move and our own last
+    move went (0x88, -1 if none), the move played. */
+export interface Sample {
+  readonly pos: any;
+  readonly ply: number;
+  readonly lastTo: number;
+  readonly ourLastTo: number;
+  readonly played: string;
+}
+
 /* The scored positions of the games in the JSONL file `path` (testset.ts's format), each kept
    with probability `rate` (chosen by a hash, so the same every time), from at most `maxGames`
    games (0: all). `progress` is called now and then with the games read and positions kept. */
-export async function loadDataset(path: string, rate: number, maxGames: number,
-  progress: (games: number, positions: number) => void): Promise<Dataset> {
-  const moveStart = new Growing((n) => new Int32Array(n));
-  const featureStart = new Growing((n) => new Int32Array(n));
-  const featureIndex = new Growing((n) => new Int16Array(n));
-  const played = new Growing((n) => new Int16Array(n));
-  let games = 0, skipped = 0;
+export async function* samples(path: string, rate: number, maxGames: number,
+  progress: (games: number, positions: number) => void): AsyncGenerator<Sample> {
+  let games = 0, kept = 0, skipped = 0;
   for await (const line of lines(Bun.file(path).stream())) {
     if (!line.trim()) continue;
     if (maxGames > 0 && games >= maxGames) break;
@@ -236,24 +266,46 @@ export async function loadDataset(path: string, rate: number, maxGames: number,
     for (let ply = 0; ply <= chosen[chosen.length - 1]; ply++) {
       if (wanted.has(ply)) {
         const lastTo = ply > 0 ? chess.parseSquare(game.moves[ply - 1].slice(2, 4)) : -1;
-        const { moves, features } = moveFeatures(pos, lastTo, ply);
-        const index = moves.findIndex((m) => chess.moveToUci(m, false) === game.moves[ply]);
-        if (index < 0) { skipped++; break; }
-        moveStart.push(featureStart.length);
-        for (const f of features) {
-          featureStart.push(featureIndex.length);
-          for (const k of f) featureIndex.push(k);
-        }
-        played.push(index);
+        const ourLastTo = ply > 1 ? chess.parseSquare(game.moves[ply - 2].slice(2, 4)) : -1;
+        kept++;
+        yield { pos, ply, lastTo, ourLastTo, played: game.moves[ply] };
       }
       const move = uciMove(pos, game.moves[ply]);
       if (move === null) { skipped++; break; }
       pos = chess.makeLegalMove(pos, move);
     }
-    if (games % 2000 === 0) progress(games, played.length);
+    if (games % 2000 === 0) progress(games, kept);
   }
-  progress(games, played.length);
+  progress(games, kept);
   if (skipped > 0) console.log(`skipped the rest of ${skipped} games with an unreadable move`);
+}
+
+/** A feature set: how many features, their names, and each legal move's active features. */
+export interface FeatureSet {
+  readonly count: number;
+  readonly name: (k: number) => string;
+  readonly featurize: (sample: Sample) => { moves: number[]; features: number[][] };
+}
+
+/* The sampled positions of `path` (see samples()) with their moves' features under `set`, as
+   flat arrays. */
+export async function loadDataset(path: string, rate: number, maxGames: number,
+  progress: (games: number, positions: number) => void, set: FeatureSet = SQUARES): Promise<Dataset> {
+  const moveStart = new Growing((n) => new Int32Array(n));
+  const featureStart = new Growing((n) => new Int32Array(n));
+  const featureIndex = new Growing((n) => new Int16Array(n));
+  const played = new Growing((n) => new Int16Array(n));
+  for await (const sample of samples(path, rate, maxGames, progress)) {
+    const { moves, features } = set.featurize(sample);
+    const index = moves.findIndex((m) => chess.moveToUci(m, false) === sample.played);
+    if (index < 0) continue;
+    moveStart.push(featureStart.length);
+    for (const f of features) {
+      featureStart.push(featureIndex.length);
+      for (const k of f) featureIndex.push(k);
+    }
+    played.push(index);
+  }
   moveStart.push(featureStart.length);
   featureStart.push(featureIndex.length);
   return { positions: played.length, moveStart: moveStart.done(), featureStart: featureStart.done(),
@@ -278,5 +330,12 @@ export function featureName(k: number): string {
   if (k < FORK) return `THREAT by ${piece(k - THREAT + 1)}`;
   if (k < DEFEND) return `FORK by ${piece(k - FORK + 1)}`;
   if (k < LEAVE) return `DEFEND ${piece(k - DEFEND + 1)}`;
-  return `LEAVE ${piece(k - LEAVE + 1)}`;
+  if (k < LOSS) return `LEAVE ${piece(k - LEAVE + 1)}`;
+  const limit = LOSS_LIMITS[k - LOSS];
+  return limit === undefined ? "LOSS over 400" : limit === 0 ? "LOSS 0 (best)" : `LOSS up to ${limit}`;
 }
+
+/** The square-table features of runs 2 and 3. */
+export const SQUARES: FeatureSet = {
+  count: FEATURES, name: featureName, featurize: (s) => moveFeatures(s.pos, s.lastTo, s.ply),
+};

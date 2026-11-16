@@ -29,6 +29,13 @@ come later.
 - `score.ts` asks a UCI engine for its move at every scored position, with the
   moves that led there (Maia reads them), and reports accuracy with a 95 %
   interval from resampling games.
+- `engine-human.ts` is a playable engine: engine.ts whose level 10 plays the
+  run 2 model without searching (the top-scoring legal move; levels 1-9 are
+  engine.ts's). It picks the same move as `train.ts`'s model on all 6,568
+  positions of the 100-game sample (36.86 %). Play it in the web app with
+  `bun src/tools/serve.js 8091 --engine src/variants/engine-human/engine-human.ts`
+  and choose level 10. To update its weights, replace `HUMAN_WEIGHTS` with a
+  new `weights-*.json` from features that S2b computes too.
 - `games.ts` extracts one bin's games from a Lichess `.pgn.zst` month, as the
   paper cut its training data. It reads about 57 MB/s of decompressed text
   (some 85 GB, 43 million games, per 2019 month): about 30 minutes a month.
@@ -67,3 +74,36 @@ now ahead of Pedagog level 10's search. Training and validation still agree
 (36.3 %), so the features are still the limit. Leaving another piece en prise
 weighs about as much against a move as hanging the moved piece (LEAVE Q −3.9,
 HANG Q −6.8); threats and forks add about +0.5 to +1.5.
+
+Run 3 (run 2's features plus LOSS: how far each move falls short of the best
+by Pedagog's 2-ply search, in 7 bands; about 500,000 training positions):
+**37.48 %** of a quarter of the test bin (155,573 positions), +0.7 over run 2,
+less than a small sample suggested (+1.5). The en prise and threat features
+already see most of what two plies show, and the search judges with Pedagog's
+crude evaluation. Loading is about 7 times slower with the search.
+
+Strength (300 games against Maia-1900 with `match.js`'s settings; Maia-1900 is
+1755 on the ladder's scale): the run 2 engine (level 9, no search) 8-234-58,
+−341 ± 45 Elo, about 1415; the run 3 engine (level 10, with the 2-ply LOSS
+features) 25-213-62, −256 ± 41 Elo, about 1500. Matching moves is not
+strength: the model imitates, and plays a move its features like even when a
+short search would see it lose material.
+
+Concepts (`concepts.ts`, `train.ts --features concepts`): 81 named yes/no
+concepts instead of the square tables — SEE bands, en prise, rescue, defence,
+threats, forks, pins, discovered attacks, checks and mate; castling, king
+moves, the king's zone; development; centrality, mobility, advance and
+retreat, outposts; pawn ranks, passed, doubled and isolated pawns, breaks and
+storms; replies to the last move; ways out of check. Without search: **35.96 %**
+of all 620,454 test positions (run 2: 36.78 % with 2,384 weights). With the
+2-ply LOSS bands (88 features, about 500,000 training positions): **36.70 %** of
+a quarter of the test bin (run 3: 37.48 %). Each weight reads as a rule of
+thumb: mate +6.5, SEE gain of 3+ +4.4, castling +2.9 to +3.7, developing a
+minor piece +1.1, rook to an open file +1.2, queen out before ply 20 −0.7,
+dropping a piece to a losing exchange −3.1 to −3.9.
+
+Strength of the concept models (`uci.ts`, 300 games each against Maia-1900 with
+the same cutechess settings): without search 11-229-60, −320 ± 44 Elo, about
+1435; with the 2-ply LOSS bands 29-204-67, −232 ± 40 Elo, about 1525. Both are
+a little stronger than the square-table models (−341 and −256), within the
+error, and the 2-ply search is worth about +90 Elo either way.

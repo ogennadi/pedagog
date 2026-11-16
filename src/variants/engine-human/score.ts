@@ -14,7 +14,7 @@
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { TestGame } from "./testset.ts";
 import { lines } from "./testset.ts";
 
@@ -66,7 +66,8 @@ export function engineSpec(spec: string): EngineSpec {
   const pedagog = /^pedagog:(\d+)(?::(.+))?$/.exec(spec);
   if (pedagog) {
     const source = resolve(pedagog[2] ?? join(root, "engine.ts"));
-    return { name: `pedagog-${pedagog[1]}`, cmd: [process.execPath, source],
+    const variant = pedagog[2] ? `-${basename(source).replace(/\.[jt]s$/, "")}` : "";
+    return { name: `pedagog-${pedagog[1]}${variant}`, cmd: [process.execPath, source],
       setup: [`setoption name Skill_Level value ${pedagog[1]}`], go: "go depth 100" };
   }
   const stockfish = /^stockfish:d(\d+)$/.exec(spec);
@@ -76,7 +77,13 @@ export function engineSpec(spec: string): EngineSpec {
     return { name: `stockfish-d${stockfish[1]}`, cmd: [exe],
       setup: ["setoption name Threads value 1", "setoption name Hash value 16"], go: `go depth ${stockfish[1]}` };
   }
-  throw new Error(`unknown engine ${spec} (want maia-<rating>, pedagog:<level>[:<path>] or stockfish:d<depth>)`);
+  const human = /^human:(.+)$/.exec(spec);
+  if (human) {
+    const weights = resolve(human[1]);
+    return { name: `human-${basename(weights).replace(/\.json$/, "")}`, cmd: [process.execPath, join(here, "uci.ts"), "--weights", weights],
+      setup: [], go: "go" };
+  }
+  throw new Error(`unknown engine ${spec} (want maia-<rating>, pedagog:<level>[:<path>], stockfish:d<depth> or human:<weights.json>)`);
 }
 
 /** A running UCI engine. */

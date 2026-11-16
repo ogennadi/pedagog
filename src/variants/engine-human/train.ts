@@ -3,17 +3,22 @@
 //   bun src/variants/engine-human/train.ts [--rate 0.035] [--valid-rate 0.05] [--max-games N]
 //     [--epochs 4] [--test] [--out data/weights-1900.json]
 //
-// Samples positions from data/train-1900-2019-10.jsonl and data/valid-1900-2019-11.jsonl (see
+// --features chooses the feature set: features.ts's square tables (default), or concepts.ts's named
+// concepts, without or with the 2-ply search's LOSS bands. Samples positions from data/train-1900-2019-10.jsonl and data/valid-1900-2019-11.jsonl (see
 // games.ts), fits the weights of a softmax over each position's legal moves by maximum
 // likelihood (Adam, mini-batches, a little L2), and reports accuracy (the top-scoring move is the
 // one played; ties go to the first move generated, as in the engine) and log-loss on the
-// validation positions after every epoch. --test also scores every position of Maia's test bin
-// (data/test-1900.jsonl). Writes the weights and prints the strongest of them.
+// validation positions after every epoch. --test also scores Maia's test bin
+// (data/test-1900.jsonl), every position or a --test-rate share of them. Writes the weights and
+// prints the strongest of them.
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { FEATURES, HANG, featureName, loadDataset } from "./features.ts";
-import type { Dataset } from "./features.ts";
+import { HANG, SQUARES, loadDataset } from "./features.ts";
+import type { Dataset, FeatureSet } from "./features.ts";
+import { CONCEPT_SEARCH_SET, CONCEPT_SET } from "./concepts.ts";
+
+const SETS: Record<string, FeatureSet> = { squares: SQUARES, concepts: CONCEPT_SET, "concepts-search": CONCEPT_SEARCH_SET };
 
 const dataDir = join(import.meta.dir, "data");
 
@@ -24,6 +29,7 @@ function options(argv: readonly string[]) {
     return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : fallback;
   };
   return {
+    set: value("--features", "squares"),
     rate: Number(value("--rate", "0.035")),
     validRate: Number(value("--valid-rate", "0.05")),
     maxGames: Number(value("--max-games", "0")),
@@ -32,6 +38,7 @@ function options(argv: readonly string[]) {
     learningRate: Number(value("--lr", "0.02")),
     l2: Number(value("--l2", "1e-6")),
     test: argv.includes("--test"),
+    testRate: Number(value("--test-rate", "1")),
     out: value("--out", join(dataDir, "weights-1900.json")),
   };
 }
@@ -65,8 +72,8 @@ export function evaluate(data: Dataset, w: Float64Array): { accuracy: number; lo
 }
 
 /* Weights fitted to `data` by Adam over `epochs` passes, reporting on `valid` after each. */
-function train(data: Dataset, valid: Dataset, opts: ReturnType<typeof options>): Float64Array {
-  const w = new Float64Array(FEATURES), m = new Float64Array(FEATURES), v = new Float64Array(FEATURES);
+function train(data: Dataset, valid: Dataset, count: number, opts: ReturnType<typeof options>): Float64Array {
+  const w = new Float64Array(count), m = new Float64Array(count), v = new Float64Array(count);
   const order = Int32Array.from({ length: data.positions }, (_, i) => i);
   let step = 0, seed = 1;
   for (let epoch = 1; epoch <= opts.epochs; epoch++) {
@@ -77,7 +84,7 @@ function train(data: Dataset, valid: Dataset, opts: ReturnType<typeof options>):
     }
     const started = Date.now();
     for (let b = 0; b < order.length; b += opts.batch) {
-      const g = new Float64Array(FEATURES);
+      const g = new Float64Array(count);
       const end = Math.min(order.length, b + opts.batch);
       for (let o = b; o < end; o++) {
         const p = order[o];
@@ -94,7 +101,7 @@ function train(data: Dataset, valid: Dataset, opts: ReturnType<typeof options>):
       }
       step++;
       const n = end - b;
-      for (let k = 0; k < FEATURES; k++) {
+      for (let k = 0; k < count; k++) {
         const grad = g[k] / n + opts.l2 * w[k];
         m[k] = 0.9 * m[k] + 0.1 * grad;
         v[k] = 0.999 * v[k] + 0.001 * grad * grad;
@@ -108,8 +115,8 @@ function train(data: Dataset, valid: Dataset, opts: ReturnType<typeof options>):
   return w;
 }
 
-/* Load one dataset, printing progress every few seconds. */
-async function load(name: string, path: string, rate: number, maxGames: number): Promise<Dataset> {
+/* Load one dataset under feature set `set`, printing progress every few seconds. */
+async function load(name: string, path: string, rate: number, maxGames: number, set: FeatureSet): Promise<Dataset> {
   const started = Date.now();
   let last = 0;
   const data = await loadDataset(path, rate, maxGames, (games, positions) => {
@@ -117,7 +124,7 @@ async function load(name: string, path: string, rate: number, maxGames: number):
     last = Date.now();
     console.log(`  ${name}: ${games.toLocaleString()} games, ${positions.toLocaleString()} positions, ` +
       `${((Date.now() - started) / 1000).toFixed(0)} s`);
-  });
+  }, set);
   console.log(`${name}: ${data.positions.toLocaleString()} positions, ${(data.moveStart[data.positions] / data.positions).toFixed(1)} ` +
     `moves and ${(data.featureIndex.length / data.moveStart[data.positions]).toFixed(1)} features a move, ` +
     `${((Date.now() - started) / 1000).toFixed(0)} s`);
@@ -127,20 +134,31 @@ async function load(name: string, path: string, rate: number, maxGames: number):
 /* Load, train, evaluate and report. */
 async function main(argv: readonly string[]): Promise<void> {
   const opts = options(argv);
-  const trainData = await load("training", join(dataDir, "train-1900-2019-10.jsonl"), opts.rate, opts.maxGames);
-  const validData = await load("validation", join(dataDir, "valid-1900-2019-11.jsonl"), opts.validRate, opts.maxGames);
-  const w = train(trainData, validData, opts);
+  const set = SETS[opts.set];
+  if (!set) throw new Error(`unknown --features ${opts.set} (want ${Object.keys(SETS).join(", ")})`);
+  console.log(`feature set ${opts.set}: ${set.count} features`);
+  const trainData = await load("training", join(dataDir, "train-1900-2019-10.jsonl"), opts.rate, opts.maxGames, set);
+  const validData = await load("validation", join(dataDir, "valid-1900-2019-11.jsonl"), opts.validRate, opts.maxGames, set);
+  const w = train(trainData, validData, set.count, opts);
   if (opts.test) {
-    const testData = await load("test (Maia's 1900 bin)", join(dataDir, "test-1900.jsonl"), 1, 0);
+    const testData = await load("test (Maia's 1900 bin)", join(dataDir, "test-1900.jsonl"), opts.testRate, 0, set);
     const t = evaluate(testData, w);
     console.log(`test: ${(100 * t.accuracy).toFixed(2)}% of ${testData.positions.toLocaleString()} positions (loss ${t.logLoss.toFixed(4)})`);
   }
-  writeFileSync(opts.out, JSON.stringify({ features: FEATURES, weights: Array.from(w, (x) => Math.round(x * 1e4) / 1e4) }) + "\n");
-  const ranked = Array.from(w, (x, k) => ({ k, x })).sort((a, b) => Math.abs(b.x) - Math.abs(a.x)).slice(0, 25);
+  writeFileSync(opts.out, JSON.stringify({ set: opts.set, features: set.count,
+    names: Array.from({ length: set.count }, (_, k) => set.name(k)),
+    weights: Array.from(w, (x) => Math.round(x * 1e4) / 1e4) }) + "\n");
+  const line = (k: number) => `  ${set.name(k).padEnd(44)} ${w[k] >= 0 ? "+" : ""}${w[k].toFixed(3)}`;
+  if (set.count <= 150) {
+    console.log(`wrote ${opts.out}; every weight, largest first:`);
+    for (const k of Array.from(w.keys()).sort((a, b) => w[b] - w[a])) console.log(line(k));
+    return;
+  }
+  const ranked = Array.from(w.keys()).sort((a, b) => Math.abs(w[b]) - Math.abs(w[a])).slice(0, 25);
   console.log(`wrote ${opts.out}; strongest weights:`);
-  for (const { k, x } of ranked) console.log(`  ${featureName(k).padEnd(24)} ${x >= 0 ? "+" : ""}${x.toFixed(3)}`);
+  for (const k of ranked) console.log(line(k));
   console.log("safety, threats and replies:");
-  for (let k = HANG; k < FEATURES; k++) console.log(`  ${featureName(k).padEnd(24)} ${w[k] >= 0 ? "+" : ""}${w[k].toFixed(3)}`);
+  for (let k = HANG; k < set.count; k++) console.log(line(k));
 }
 
 if (import.meta.main) await main(process.argv.slice(2));

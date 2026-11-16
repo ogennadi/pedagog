@@ -1,17 +1,21 @@
-// Tiny static server for the web app:  bun src/tools/serve.js [port]   (or: bun run web)
+// Tiny static server for the web app:  bun src/tools/serve.js [port] [--engine PATH]   (or: bun run web)
 // Serves src/web/ as the site root, plus the licence files (LICENSE, docs/THIRD_PARTY_NOTICES.md)
-// and engine.js (engine.ts without its types, made afresh for each request), which is the same
-// layout `bun run build` puts in dist/. Sends the cross-origin isolation headers so
-// SharedArrayBuffer is available and "stop" can interrupt a running search.
+// and engine.js (engine.ts, or the --engine source, without its types, made afresh for each
+// request), which is the same layout `bun run build` puts in dist/. Sends the cross-origin
+// isolation headers so SharedArrayBuffer is available and "stop" can interrupt a running search.
 import { resolve, dirname, extname, normalize } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { engineJs } from "./engine-js.js";
+import { engineJs, engineTs } from "./engine-js.js";
 
 const root = resolve(dirname(Bun.main), "..", "..");
 const web = resolve(root, "src", "web");
 // Site path -> repository file, for the licence files served beside index.html.
 const LICENCE_FILES = { "/LICENSE": "LICENSE", "/THIRD_PARTY_NOTICES.md": "docs/THIRD_PARTY_NOTICES.md" };
-const port = parseInt(process.argv[2] || "8080");
+const args = process.argv.slice(2);
+const engineAt = args.indexOf("--engine");
+const engine = engineAt >= 0 ? resolve(args[engineAt + 1]) : engineTs;
+if (!existsSync(engine)) throw new Error(`engine source not found: ${engine}`);
+const port = parseInt(args.find((arg, i) => !arg.startsWith("--") && (engineAt < 0 || i !== engineAt + 1)) || "8080");
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".webp": "image/webp",
                 ".md": "text/markdown; charset=utf-8" };
@@ -27,7 +31,7 @@ Bun.serve({
       "Cross-Origin-Embedder-Policy": "require-corp",
       "Cache-Control": "no-cache",
     });
-    if (path === "/engine.js") return new Response(engineJs(), { headers: headers(path) });
+    if (path === "/engine.js") return new Response(engineJs(engine), { headers: headers(path) });
     if (Object.hasOwn(LICENCE_FILES, path)) {
       const licence = resolve(root, LICENCE_FILES[path]);
       return new Response(Bun.file(licence), { headers: headers(licence) });
@@ -37,4 +41,4 @@ Bun.serve({
     return new Response(Bun.file(file), { headers: headers(file) });
   },
 });
-console.log(`Pedagog web app: http://localhost:${port}/`);
+console.log(`Pedagog web app: http://localhost:${port}/ (engine: ${engine})`);
