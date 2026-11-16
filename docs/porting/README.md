@@ -37,7 +37,7 @@ The file translates line by line into most languages:
   `type | colour << 3`), which every language has.
 - Generics, class inheritance and getters. What is read is what runs: no dispatch or
   hidden calls. The two classes (`Search`, `Draft`) are plain mutable records with
-  methods; the only `extends` is between interfaces (`Skill extends Rung, Style`).
+  methods; the only `extends` is between interfaces (`Skill extends LevelSettings, Style`).
 - `Map` and `Set`. Boards and tables are typed arrays or plain arrays: every language
   has them, and hash-map iteration order differs between languages.
 - Exceptions for control flow. The one `throw` reports a bug (an illegal move);
@@ -52,7 +52,7 @@ The file translates line by line into most languages:
 ## Read first
 - `engine.ts` - read ALL of it. Keep its section layout (S0 Constants ... S6 UCI), its
   explanatory block comments (this is a pedagogical engine: adapt the prose, do not drop it),
-  and its domain names (Square, Piece, Move, Pv, Position, Draft, Search, Skill, Style, Rung,
+  and its domain names (Square, Piece, Move, Pv, Position, Draft, Search, Skill, Style, LevelSettings,
   Limits, ...), adjusted only to the language's casing conventions.
 - `docs\naming.md` - why the engine's names are what they are, and which reference
   engines share them. Keep these names in the port.

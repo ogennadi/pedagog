@@ -98,8 +98,8 @@ class, are numbered under it (20.1). Every interface field is
   <span class="d">One castling right, 0&ndash;3: white kingside, white queenside, black kingside, black queenside.</span></li>
 <li><span class="n">T26</span><code>type <b>Rights</b> = number</code>
   <span class="d">A 4-bit set of <code>Right</code>s.</span></li>
-<li><span class="n">T27</span><code>interface <b>Rung</b> { depth: number; deeperPermille: number; blunderWindow: Score; blunderPermille: number; vision: number }</code>
-  <span class="d">One level&rsquo;s knobs. The ladder is a <code>readonly Rung[]</code>, level <em>n</em> at index <em>n</em>&nbsp;&minus;&nbsp;1. Level 1&rsquo;s row is all zeros, because the random mover ignores its knobs.</span></li>
+<li><span class="n">T27</span><code>interface <b>LevelSettings</b> { depth: number; deeperPermille: number; blunderWindow: Score; blunderPermille: number; vision: number }</code>
+  <span class="d">One level&rsquo;s settings. <code>LEVEL_SETTINGS</code> is a <code>readonly LevelSettings[]</code>, level <em>n</em> at index <em>n</em>&nbsp;&minus;&nbsp;1. Level 1&rsquo;s row is all zeros, because the random mover ignores its settings.</span></li>
 <li><span class="n">T28</span><code>type <b>Score</b> = number</code>
   <span class="d">Centipawns for the side to move.</span></li>
 <li><span class="n">T29</span><code>class <b>Search</b> { limits; skill; io; unseen: Pv; startTime: Millis; nodes: number; stopped: boolean; rootDepth: number }</code>
@@ -108,8 +108,8 @@ class, are numbered under it (20.1). Every interface field is
   <span class="d">What <code>think</code> needs from the world: a clock, a stop request and a place to report each depth.</span></li>
 <li><span class="n">T31</span><code>interface <b>Session</b> { pos: Position; skill: Skill; chess960: boolean }</code>
   <span class="d">Everything the engine remembers between UCI commands.</span></li>
-<li><span class="n">T32</span><code>interface <b>Skill</b> extends Rung { level: number; seed: number; seedKey: number }</code>
-  <span class="d">One seeded opponent: a level&rsquo;s rung. Made by <code>skillFor</code> and frozen. <code>seedKey</code> is the seed, hashed.</span></li>
+<li><span class="n">T32</span><code>interface <b>Skill</b> extends LevelSettings { level: number; seed: number; seedKey: number }</code>
+  <span class="d">One seeded opponent: a level&rsquo;s settings. Made by <code>skillFor</code> and frozen. <code>seedKey</code> is the seed, hashed.</span></li>
 <li><span class="n">T33</span><code>type <b>Square</b> = number</code>
   <span class="d">A 0x88 index (0&ndash;127), or <code>NO_SQUARE</code>.</span></li>
 </ol>
@@ -188,12 +188,12 @@ class, are numbered under it (20.1). Every interface field is
 
 <h3>S2 Skill levels</h3>
 <ol>
-<li><span class="n">25</span><code><b>rung</b>(depth: number, deeperPermille: number, blunderWindow: Score, blunderPermille: number, vision: number): Rung</code>
-  <span class="d">Builds one ladder rung; each argument is one knob.</span></li>
+<li><span class="n">25</span><code><b>settings</b>(depth: number, deeperPermille: number, blunderWindow: Score, blunderPermille: number, vision: number): LevelSettings</code>
+  <span class="d">Builds one level&rsquo;s settings; each argument is one setting.</span></li>
 <li><span class="n">26</span><code><b>skillFor</b>(level: number, seed: number): Skill</code>
   <span class="d">The frozen skill for a level (clamped to 1&ndash;10) and a seed.</span></li>
 <li><span class="n">27</span><code><b>depthFor</b>(pos: Position, skill: Skill): number</code>
-  <span class="d">The depth limit for this position: the rung&rsquo;s depth, plus one on a hashed share of positions.</span></li>
+  <span class="d">The depth limit for this position: the level&rsquo;s depth, plus one on a hashed share of positions.</span></li>
 <li><span class="n">28</span><code><b>judge</b>(pos: Position, skill: Skill): Score</code>
   <span class="d">The evaluation plus any blunder. This is what the search scores a leaf with.</span></li>
 <li><span class="n">29</span><code><b>blunder</b>(pos: Position, skill: Skill): Score</code>

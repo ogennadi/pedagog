@@ -12,34 +12,6 @@
    web app gets engine.js, this file with its types removed
    (tools/engine-js.js does that for `bun run web` and
    `bun run build`). Type-check it with `bun run check`.
-
-   Supports standard chess and Chess960 (UCI_Chess960),
-   a deterministic Skill_Seed (as in Gaia), and the Hash/Threads
-   options OpenBench expects. Search uses one thread; a separate
-   main thread handles input and interruption, not parallel search.
-
-   It is deliberately a base engine: iterative deepening, alpha-beta
-   with captures tried first, and a plain piece-square evaluation,
-   and nothing else. Skill_Level
-   picks one of ten levels, from a random mover to about Maia-1900
-   (1755 on the Lichess classical scale), weakened the way Gaia does
-   it: the engine looks less far ahead, misjudges some positions on
-   purpose, and overlooks some moves entirely (see docs/COLOPHON.md
-   for the measurements).
-
-   HOW TO READ IT
-   Every function names what it needs in its parameters and hands
-   back what it found as its return value, so each one can be read
-   on its own page. No function changes anything it is given. Only
-   two kinds of object change after they are made, and each belongs
-   to the one call that creates it: a Search (think()'s node count
-   and stop flag) and a Draft (makeMove()'s scratch copy of the
-   board). The only `let`s outside a function belong to the I/O code
-   at the very end.
-
-   Positions are values too: makeMove() returns a new position
-   rather than changing the old one. That costs some speed, since
-   every move copies a board, but nothing ever has to be undone.
 ================================================================
 
    TABLE OF CONTENTS
@@ -531,16 +503,16 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
    ================================================================
 
    Deliberately weakened play, for opponents meant to be beatable,
-   after Gaia (jromang/gaiachess, src/skill.rs). Every level, SKILL_MAX
-   included, is weakened this way: the top level is meant to match
-   Maia-1900, and the full search would be far stronger.
+   after Gaia (jromang/gaiachess, src/skill.rs). Every level is
+   weakened: the top one only searches less far, to match Maia-1900;
+   the full search would be far stronger.
 
    Searching less far is not enough on its own: a shallow but
    otherwise flawless player is dull, never careless. So a level
-   turns three knobs at once:
+   turns three settings at once:
 
      depth      how far ahead it looks, plus a chance of one extra
-                ply on some positions so a rung can sit between two
+                ply on some positions so a level can sit between two
                 whole depths (a ply is a very coarse unit);
      blunder    now and then it misjudges a position by a lot, which
                 is how human mistakes are actually distributed: the
@@ -552,7 +524,7 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
                 distance from the root: a move six plies away is
                 harder to picture than one two plies away.
 
-   (Gaia has a fourth knob, evaluation fidelity, and a small error
+   (Gaia has a fourth setting, evaluation fidelity, and a small error
    on every position. Both were measured here and found to be worth
    nothing with this evaluation, so they were left out; see
    docs/COLOPHON.md.)
@@ -562,8 +534,7 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
    the same position the same way every time: stable blind spots, not
    a tremor. Level 1 is apart: it plays a random legal move, but
    always mates in one when it can. Levels 2..SKILL_MAX come from
-   the ladder below; their ratings were measured against Maia and
-   are recorded in docs/COLOPHON.md.
+   LEVEL_SETTINGS below, which also lists their measured ratings.
 
    A skill is a frozen value made by skillFor(level, seed); the
    functions below take it as an argument.
@@ -585,8 +556,8 @@ const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0
 const DEPTH_SALT = 0xA5A55A5A;      // keeps the depth draw apart from others
 const ZOBRIST_SEED = 0x2545F491;    // seeds zobristKeys()
 
-/** One level's knobs. */
-interface Rung {
+/** One level's settings. */
+interface LevelSettings {
   readonly depth: number;
   readonly deeperPermille: number;  // share of positions searched a ply deeper
   readonly blunderWindow: Score;    // largest misjudgement, either way
@@ -594,55 +565,58 @@ interface Rung {
   readonly vision: number;          // chance, out of 1024, of noticing a move
 }
 
-/* One ladder rung; each argument is one knob. */
-function rung(depth: number, deeperPermille: number, blunderWindow: Score,
-  blunderPermille: number, vision: number): Rung {
+/* One level's settings; each argument is one setting. */
+function settings(depth: number, deeperPermille: number, blunderWindow: Score,
+  blunderPermille: number, vision: number): LevelSettings {
   return { depth, deeperPermille, blunderWindow, blunderPermille, vision };
 }
 
-/* The ladder, from a beginner's opponent up to Maia-1900's strength,
-   evenly spaced about 100 Elo apart. The ratings are on the Lichess
-   classical scale: Maia-1900's bot (maia9) was rated 1755 there, and
-   the fit is anchored on it (see docs/COLOPHON.md). Every level is a depth,
-   never a time budget, so it plays the same on any machine. Level n
-   is at index n - 1; level 1, the random mover, ignores its knobs. */
-const LADDER: readonly Rung[] = [
-  //   depth  deeper  blunder  b/1000  vision           target  measured
-  rung(0,       0,       0,      0,       0),    //  1    ~170
-  rung(1,       0,     800,     76,     560),    //  2     945      940
-  rung(1,       0,     700,     66,     670),    //  3    1046     1038
-  rung(1,     400,     660,     61,     710),    //  4    1148     1168
-  rung(1,     780,     615,     57,     745),    //  5    1249     1225
-  rung(2,       5,     555,     51,     805),    //  6    1350     1329
-  rung(2,     150,     480,     43,     875),    //  7    1451     1430
-  rung(2,     360,     415,     35,     930),    //  8    1553     1547
-  rung(2,     690,     380,     26,     962),    //  9    1654     1666
-  rung(3,      60,     330,     19,     985),    // 10    1755     1795
+/* Settings for each level, from a beginner's opponent up to
+   Maia-1900's strength, evenly spaced about 100 Elo apart. The
+   ratings are on the Lichess classical scale: Maia-1900's bot (maia9)
+   was rated 1755 there, and the fit is anchored on it (see
+   docs/COLOPHON.md). Measured in 28 pairings of 300 games: each level
+   against the one below and against Maia-1100, -1500 and -1900, fitted
+   by tools/elo.js. Every level is a depth, never a time budget, so it
+   plays the same on any machine. Level n is at index n - 1; level 1,
+   the random mover, ignores its settings. */
+const LEVEL_SETTINGS: readonly LevelSettings[] = [
+  //       depth  deeper  blunder  b/1000  vision           target  measured
+  settings(0,       0,       0,      0,       0),    //  1    ~170
+  settings(2,      99,     507,     46,     850),    //  2     945      905
+  settings(2,     199,     465,     41,     888),    //  3    1046     1026
+  settings(2,     370,     414,     35,     931),    //  4    1148     1149
+  settings(2,     554,     394,     30,     949),    //  5    1249     1219
+  settings(2,     829,     361,     23,     971),    //  6    1350     1351
+  settings(3,     164,     311,     17,     989),    //  7    1451     1442
+  settings(3,     646,     221,     10,    1004),    //  8    1553     1543
+  settings(4,     117,     115,      5,    1015),    //  9    1654     1646
+  settings(4,     450,       0,      0,    1024),    // 10    1755     1741
 ];
 
-/** One seeded opponent: a level's rung. */
-interface Skill extends Rung {
+/** One seeded opponent: a level's settings. */
+interface Skill extends LevelSettings {
   readonly level: number;
   readonly seed: number;
   readonly seedKey: number;        // the seed, hashed
 }
 
 /* The skill for a Skill_Level (clamped to 1..SKILL_MAX) and a
-   Skill_Seed: its rung of the ladder. The seed picks which weakened
+   Skill_Seed: its level's settings. The seed picks which weakened
    opponent a level is; 0 means the built-in one, so an engine nobody
    configures still plays the same game twice. */
 function skillFor(level: number, seed: number): Skill {
   const clamped = Math.min(SKILL_MAX, Math.max(1, Math.trunc(level)));
   return Object.freeze({
-    ...LADDER[clamped - 1],
+    ...LEVEL_SETTINGS[clamped - 1],
     level: clamped,
     seed,
     seedKey: mix32(seed === 0 ? BUILT_IN_SEED : seed),
   });
 }
 
-/* Depth ceiling for `pos`: the rung's depth, and one more on the
-   rung's share of positions, decided by the hash. */
+/* Depth ceiling for `pos`: the level's depth, and one more on the
+   level's share of positions, decided by the hash. */
 function depthFor(pos: Position, skill: Skill): number {
   if (skill.deeperPermille === 0) return skill.depth;
   const hash = mix32(pos.key ^ skill.seedKey ^ DEPTH_SALT);
@@ -655,7 +629,7 @@ function judge(pos: Position, skill: Skill): Score {
   return evaluate(pos) + blunder(pos, skill);
 }
 
-/* The occasional misjudgement, added to the evaluation of the rung's
+/* The occasional misjudgement, added to the evaluation of the level's
    share of positions: up to blunderWindow centipawns either way. Mate
    scores never pass through here, since they come from the search,
    not from evaluate(). */

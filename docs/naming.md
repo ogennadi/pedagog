@@ -77,7 +77,7 @@ Pedagog's own names, where the references disagree:
   `uciCommand`, `newSession`, `zobristKeys`, `moveToUci`, `encodeMove`.
 - The skill code (`skillFor`, `judge`, `blunder`, `mateOrRandomMove`,
   `overlookedRootMoves`): only Gaia's `skill.rs` is close, and it shares
-  Pedagog's ladder vocabulary (`rung`, `sees_move`).
+  some of Pedagog's vocabulary (`sees_move`).
 
 ## Position fields
 
