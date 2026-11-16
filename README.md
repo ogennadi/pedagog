@@ -37,7 +37,6 @@ The repository is laid out as:
   (match runner, Elo fit, style statistics, plots, server, build, UCI diff).
 - `docs/` — the COLOPHON (how it was made and measured), calibration data and
   figures, [naming](docs/naming.md) and [porting](docs/porting/README.md) notes.
-- `ports/` — throwaway ports to other languages, ignored by Git.
 
 `bun run web` serves the web app with the engine beside it as `engine.js`
 (`engine.ts` with its types removed, comments kept), the same layout
