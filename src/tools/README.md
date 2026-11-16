@@ -4,8 +4,10 @@ Run the commands below from the repository root.
 
 Match tools require Bun. `src/tools/match.js` wraps
 [cutechess-cli](https://github.com/cutechess/cutechess), and Maia matches also
-require `lc0` plus Maia network files. `src/tools/blunders.py`, `src/tools/style.py` and
-`src/tools/style-constrictor.py` need `python-chess`; `src/tools/plot.py` needs Matplotlib. Set executable
+require `lc0` plus Maia network files. `src/tools/blunders.py` and the variants' style
+checkers (`src/variants/engine-aggressive/style.py`,
+`src/variants/engine-constrictor/style-constrictor.py`) need `python-chess`;
+`src/tools/plot.py` needs Matplotlib. Set executable
 locations using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, and `STOCKFISH`, or pass
 paths on the command line where supported. Maia weights default to
 `src/tools/models/`.
@@ -40,17 +42,17 @@ longer appended to a shared history file.
 
 ## Analyzing results
 
-`src/tools/style.py` summarises how each player in a set of PGNs plays: an
+`src/variants/engine-aggressive/style.py` summarises how each player in a set of PGNs plays: an
 aggression score (3 × knowing sacrifices + checks, per 100 moves), sacrifices
 versus blunders, checks, how close its pieces stand to the enemy king, material
 imbalance, evaluation swings, score and game length:
 
 ```sh
-python src/tools/style.py src/tools/out/l5-vs-r5.pgn
+python src/variants/engine-aggressive/style.py src/tools/out/l5-vs-r5.pgn
 ```
 
 For a draft comparison of space-taking and constriction, use
-`python src/tools/style-constrictor.py --json src/tools/out/constrictor.json match.pgn`.
+`python src/variants/engine-constrictor/style-constrictor.py --json src/tools/out/constrictor.json match.pgn`.
 It reports enemy-half squares attacked outside enemy pawn control, the space
 edge over the opponent, the opponent's pseudo-legal mobility, and pawn advance.
 It samples positions after each player's own moves with at least 20 pieces.
@@ -65,7 +67,8 @@ bun src/tools/elo.js --anchor maia-1900=1755 --json src/tools/out/elo-preview.js
   src/tools/out/r10/r10-L2-vs-maia-1100.pgn src/tools/out/r10/r10-L3-vs-L2.pgn
 python src/tools/blunders.py --out src/tools/out/blunders-preview.json \
   src/tools/out/r10/r10-L2-vs-L1.pgn
-python src/tools/style.py --json src/tools/out/style-preview.json src/tools/out/r10/r10-L5-vs-R5.pgn
+python src/variants/engine-aggressive/style.py --json src/tools/out/style-preview.json \
+  src/tools/out/r10/r10-L5-vs-R5.pgn
 python src/tools/plot.py --elo src/tools/out/elo-preview.json --style src/tools/out/style-preview.json \
   --out src/tools/out/skill-curve-preview.png
 ```

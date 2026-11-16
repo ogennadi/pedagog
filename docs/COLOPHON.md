@@ -50,8 +50,7 @@ aggressive style's sacrifices are hopes rather than calculations; with it, a
 sacrifice that loses to a simple recapture is seen as such. *(Later undone:
 `engine.ts` went back to one plain style and then to the search of Parts I and
 II — no quiescence, no previous-best-move hint, captures tried first in
-generated order. The aggressive style keeps all three in
-`src/variants/engine-aggressive.ts`.)*
+generated order.)*
 
 ### How aggression was measured
 
@@ -439,8 +438,7 @@ MVV-LVA capture ranking and incremental evaluation. All of them were written,
 tested and then removed; the table above is what they cost. (Part III brought
 back a capped quiescence search and MVV-LVA ordering, which the aggressive
 style needs to calculate its sacrifices; both have since left `engine.ts`
-again, and the aggressive style, now in `src/variants/engine-aggressive.ts`,
-keeps them.) The evaluation is
+again.) The evaluation is
 formula-based piece-square tables — the brief said to try a naive PSQT first
 and PeSTO only if the engine turned out too weak, and it did not.
 
@@ -450,9 +448,8 @@ and PeSTO only if the engine turned out too weak, and it did not.
   `engine.js` until it moved to TypeScript; the browser still loads `engine.js`, which
   the tools make from `engine.ts` by removing the types).
 - `src/` — all other code: the web app (Part II: pages, scripts, styles, the service worker
-  and the vendored libraries; `bun run web` serves it with the engine beside it), the tests,
-  engine variants, and the tools (match runner, Elo fit, blunder judge, style statistics,
-  plot, server, build).
+  and the vendored libraries; `bun run web` serves it with the engine beside it), the tests
+  and the tools (match runner, Elo fit, blunder judge, plot, server, build).
 - `dist/` — generated, ignored: `bun run build` assembles the deployable site there.
 - `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
   `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs

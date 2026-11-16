@@ -4,7 +4,7 @@ both styles; and, in a second figure, how aggressively each style plays at each 
     python src/tools/plot.py [--elo docs/skill-curve.json] [--style docs/style.json]
                          [--out docs/skill-curve.png] [--style-out docs/style.png]
 
---elo is the output of src/tools/elo.js --json, --style that of src/tools/style.py --json. Players
+--elo is the output of src/tools/elo.js --json, --style that of src/variants/engine-aggressive/style.py --json. Players
 L2..L10 are the aggressive style (Pedagog's default), R2..R10 the plain reference style.
 Level 1, the random mover, is left out: it is ~800 Elo below level 2 and would flatten the rest.
 """

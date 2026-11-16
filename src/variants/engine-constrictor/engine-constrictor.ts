@@ -744,7 +744,7 @@ const NO_CONSTRICTION = {
 const AGGRESSIVE: Style = { kingAttack: 60, materialMg: 250, checkBias: 60, ...NO_CONSTRICTION };
 const PLAIN: Style = { kingAttack: 0, materialMg: 1000, checkBias: 0, ...NO_CONSTRICTION };
 // Tuned against Maia-1900 at Skill_Level 10 over the web book's lines;
-// deliberately extreme (see variants/CONSTRICTOR-TUNING.md).
+// deliberately extreme (see CONSTRICTOR-TUNING.md beside this file).
 const CONSTRICTOR: Style = {
   kingAttack: 0, materialMg: 1000, checkBias: 0,
   space: 40, pawnAdvance: 60, wedge: 150, restrict: 40, lock: 100, oneSided: 1, storm: 100,

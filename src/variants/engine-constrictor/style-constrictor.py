@@ -1,6 +1,6 @@
 """Compare space-taking and constriction in PGNs.
 
-    python src/tools/style-constrictor.py [--json out.json] match.pgn [...]
+    python src/variants/engine-constrictor/style-constrictor.py [--json out.json] match.pgn [...]
 
 Sample positions after each player's own movetext moves, while at least 20
 pieces remain (the same middlegame proxy as style.py). For each player:

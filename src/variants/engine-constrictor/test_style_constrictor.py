@@ -9,7 +9,7 @@ import unittest
 import chess
 
 
-SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "style-constrictor.py"
+SCRIPT = Path(__file__).resolve().parent / "style-constrictor.py"
 spec = importlib.util.spec_from_file_location("style_constrictor", SCRIPT)
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)

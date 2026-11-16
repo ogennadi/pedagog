@@ -1,6 +1,6 @@
 # Constrictor tuning log
 
-Goal: a variant of Pedagog (`src/variants/engine-constrictor.ts`) whose space-taking,
+Goal: a variant of Pedagog (`src/variants/engine-constrictor/engine-constrictor.ts`) whose space-taking,
 constricting style you can *feel within a single game*, as with the Aggressive
 campaign (COLOPHON, Part III). `engine.ts` stays untouched.
 
@@ -15,7 +15,7 @@ campaign (COLOPHON, Part III). `engine.ts` stays untouched.
   `Constrictor_*` UCI spin options. It appends one line per run to
   `src/tools/out/tune-results.jsonl`.
 - **Metrics:**
-  - `src/tools/style-constrictor.py`: space, space edge, opponent mobility, pawn advance.
+  - `src/variants/engine-constrictor/style-constrictor.py`: space, space edge, opponent mobility, pawn advance.
   - Session file `feel.py`, which reads own moves 10–35:
     - `adv`: own pawns in the enemy half
     - `ram`: own pawns in the enemy half blocked by an enemy pawn
