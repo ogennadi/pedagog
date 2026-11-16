@@ -3,6 +3,7 @@
 /*.iml
 /dist/
 /node_modules/
-/ports/
+/src/ports/
 /pedagog
 /pedagog.exe
+__pycache__/
