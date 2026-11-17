@@ -3,7 +3,9 @@
 /*.iml
 /dist/
 /node_modules/
-/src/ports/
+/src/ports/*
+!/src/ports/README.md
+!/src/ports/report-template.html
 /pedagog
 /pedagog.exe
 __pycache__/

@@ -99,7 +99,7 @@ below the top, so a level is the same opponent on any machine and under any
 load. The two ladders were tuned over five rounds of ~15,000 games each, then
 measured once more on the committed engine (round 10, below).
 
-Round 10: 61 pairings of 300 games (18,300 games) — every level against the level below in its own ladder, against the other style's level of the same number, and against Maia-1100 (all levels), Maia-1500 (8–10) and Maia-1900 (6–10); level 2 of each style also against level 1. Depth-bounded on both sides, so the matches are deterministic: rerunning a pairing replays the same games. `elo.js` fits one rating to everything, anchored on Maia-1900 = 1755; the inputs are archived in `docs/calibration-baseline/round-10-pgns.zip`. Depth is *plies + share of positions searched one ply deeper*; vision is per 1024. Aggression is `style.py`'s score (3 × knowing sacrifices + checks per 100 moves) in the games between the two styles.
+Round 10: 61 pairings of 300 games (18,300 games) — every level against the level below in its own ladder, against the other style's level of the same number, and against Maia-1100 (all levels), Maia-1500 (8–10) and Maia-1900 (6–10); level 2 of each style also against level 1. Depth-bounded on both sides, so the matches are deterministic: rerunning a pairing replays the same games. `elo.js` fits one rating to everything, anchored on Maia-1900 = 1755; the inputs were archived in `docs/calibration-baseline/round-10-pgns.zip`, now only in Git history. Depth is *plies + share of positions searched one ply deeper*; vision is per 1024. Aggression is `style.py`'s score (3 × knowing sacrifices + checks per 100 moves) in the games between the two styles.
 
 | level | target | Pedagog depth | blunder | vision | **Elo** | aggression | Reference depth | blunder | vision | **Elo** | aggression |
 |---|---|---|---|---|---|---|---|---|---|---|---|
@@ -452,8 +452,8 @@ and PeSTO only if the engine turned out too weak, and it did not.
   and the tools (match runner, Elo fit, blunder judge, plot, server, build).
 - `dist/` — generated, ignored: `bun run build` assembles the deployable site there.
 - `docs/` — this COLOPHON, the logo, `skill-curve.png`, `skill-curve.json` (Part III ladders),
-  `style.png`, `style.json`, `blunders.json` (round 9); `calibration-baseline/` holds the PGNs
-    behind the published fit.
+  `style.png`, `style.json`, `blunders.json` (round 9). The PGNs behind the published fit
+  (`calibration-baseline/`) are only in Git history.
 - `package.json` — `bun start`, `bun test`, `bun run bench`, `bun run perft`, `bun run web`,
   `bun run build`, `bun run match`, `bun run elo`.
 

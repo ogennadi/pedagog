@@ -73,8 +73,9 @@ python src/tools/plot.py --elo src/tools/out/elo-preview.json --style src/tools/
   --out src/tools/out/skill-curve-preview.png
 ```
 
-For the published Elo dataset and reproduction instructions, see the
-[calibration archive](../docs/calibration-baseline/README.md). See
+The round-10 calibration archive (the PGNs behind the published figures, played by
+the engine of commit `bebea84`, which has changed since) is only in Git history:
+`git show 3d87460:docs/calibration-baseline/README.md`. See
 [`COLOPHON.md`](../docs/COLOPHON.md) for the measurement method and interpretation.
 
 ## Comparing UCI output

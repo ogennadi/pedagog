@@ -31,12 +31,12 @@ The repository is laid out as:
 
 - `engine.ts` — the engine, the only code at the top level. It is written to
   translate line by line into other languages; see the
-  [porting notes](docs/porting/README.md#how-enginets-is-written-for-porting).
+  [porting notes](src/ports/README.md#how-enginets-is-written-for-porting).
 - `src/` — all other code: the web app (pages, scripts, styles, the service
   worker, vendored libraries), the tests, engine variants, and the tools
   (match runner, Elo fit, style statistics, plots, server, build, UCI diff).
 - `docs/` — the COLOPHON (how it was made and measured), calibration data and
-  figures, [naming](docs/naming.md) and [porting](docs/porting/README.md) notes.
+  figures, [naming](docs/naming.md) and [porting](src/ports/README.md) notes.
 
 `bun run web` serves the web app with the engine beside it as `engine.js`
 (`engine.ts` with its types removed, comments kept), the same layout
@@ -106,10 +106,9 @@ go movetime 1000
 
 ## Calibration and analysis
 
-See the [tools README](src/tools/README.md) for match setup and analysis commands,
-the [calibration archive](docs/calibration-baseline/README.md) for reproducing
-the published Elo fit, and [`COLOPHON.md`](docs/COLOPHON.md) for the measurement
-method and interpretation.
+See the [tools README](src/tools/README.md) for match setup and analysis commands
+(the PGNs behind the published Elo fit are only in Git history), and
+[`COLOPHON.md`](docs/COLOPHON.md) for the measurement method and interpretation.
 
 ## Licensing
 
