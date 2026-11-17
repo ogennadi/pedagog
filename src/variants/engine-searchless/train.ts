@@ -15,11 +15,12 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { loadDataset } from "./features.ts";
-import type { Dataset } from "./features.ts";
+import type { Dataset, FeatureSet } from "./features.ts";
 import { STRENGTH_SET } from "./strength.ts";
 
 const dataDir = join(import.meta.dir, "data");
-const set = STRENGTH_SET;
+/** The feature sets, by the name weights files give them. */
+export const SETS: Record<string, FeatureSet> = { strength: STRENGTH_SET };
 
 /* The options of a command line. */
 export function options(argv: readonly string[]) {
@@ -28,6 +29,7 @@ export function options(argv: readonly string[]) {
     return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1] : fallback;
   };
   return {
+    set: value("--features", "strength"),
     trainFile: value("--train-file", join(dataDir, "sf-train.jsonl")),
     validFile: value("--valid-file", join(dataDir, "sf-valid.jsonl")),
     rate: Number(value("--rate", "1")),
@@ -116,8 +118,8 @@ export function train(data: Dataset, valid: Dataset, count: number, opts: Return
   return w;
 }
 
-/* Load one dataset, printing progress every few seconds. */
-async function load(name: string, path: string, rate: number, maxGames: number): Promise<Dataset> {
+/* Load one dataset under `set`, printing progress every few seconds. */
+async function load(name: string, path: string, rate: number, maxGames: number, set: FeatureSet): Promise<Dataset> {
   const started = Date.now();
   let last = 0;
   const data = await loadDataset(path, rate, maxGames, (games, positions) => {
@@ -135,11 +137,13 @@ async function load(name: string, path: string, rate: number, maxGames: number):
 /* Load, train, evaluate and report. */
 async function main(argv: readonly string[]): Promise<void> {
   const opts = options(argv);
-  console.log(`feature set strength: ${set.count} features`);
-  const trainData = await load("training", opts.trainFile, opts.rate, opts.maxGames);
-  const validData = await load("validation", opts.validFile, opts.validRate, opts.maxGames);
+  const set = SETS[opts.set];
+  if (!set) throw new Error(`unknown --features ${opts.set} (want ${Object.keys(SETS).join(" or ")})`);
+  console.log(`feature set ${opts.set}: ${set.count} features`);
+  const trainData = await load("training", opts.trainFile, opts.rate, opts.maxGames, set);
+  const validData = await load("validation", opts.validFile, opts.validRate, opts.maxGames, set);
   const w = train(trainData, validData, set.count, opts);
-  writeFileSync(opts.out, JSON.stringify({ set: "strength", features: set.count,
+  writeFileSync(opts.out, JSON.stringify({ set: opts.set, features: set.count,
     names: Array.from({ length: set.count }, (_, k) => set.name(k)),
     weights: Array.from(w, (x) => Math.round(x * 1e4) / 1e4) }) + "\n");
   console.log(`wrote ${opts.out}; every weight, largest first:`);

@@ -16,7 +16,7 @@ import type { TestGame } from "./testset.ts";
 
 const e = engine();
 export const chess = e.read(`({ parseFen, generateMoves, makeMove, legalMoves, makeLegalMove, fromSq, toSq,
-  promoType, moveType, inCheck, parseSquare, moveToUci, FLAG_CASTLE, FLAG_EP })`);
+  promoType, moveType, inCheck, parseSquare, moveToUci, isDraw, FLAG_CASTLE, FLAG_EP })`);
 
 const PHASE_WEIGHT = [0, 0, 1, 1, 2, 4, 0];
 export const VALUE = [0, 1, 3, 3, 5, 9, 100];
@@ -98,6 +98,16 @@ export function phaseOf(pos: any, ply: number): number {
   return material <= 8 ? 2 : ply < 30 ? 0 : 1;
 }
 
+/* The material (pawns, kings left out) of colour `us` on `board`, minus the other colour's. */
+export function materialOf(board: Int8Array, us: number): number {
+  let sum = 0;
+  for (let sq = 0; sq < 128; sq++) {
+    const piece = board[sq];
+    if ((sq & 0x88) === 0 && piece !== 0 && (piece & 7) !== 6) sum += (piece >> 3 === us ? 1 : -1) * VALUE[piece & 7];
+  }
+  return sum;
+}
+
 /* The legal move of `pos` written `uci` ("e1g1" for castling), or null. */
 export function uciMove(pos: any, uci: string): number | null {
   const from = chess.parseSquare(uci.slice(0, 2));
@@ -153,7 +163,8 @@ export interface Sample {
 
 /* The scored positions of the games in the JSONL file `path` (testset.ts's format), each kept
    with probability `rate` (chosen by a hash, so the same every time), from at most `maxGames`
-   games (0: all). `progress` is called now and then with the games read and positions kept. */
+   games (0: all). A position's ply counts from the game's start: the FEN's move counters, plus
+   the moves since. `progress` is called now and then with the games read and positions kept. */
 export async function* samples(path: string, rate: number, maxGames: number,
   progress: (games: number, positions: number) => void): AsyncGenerator<Sample> {
   let games = 0, kept = 0, skipped = 0;
@@ -164,6 +175,8 @@ export async function* samples(path: string, rate: number, maxGames: number,
     const chosen = game.scored.filter((ply) => mix32(Math.imul(games + 1, 0x9e3779b9) ^ ply) % 1_000_000 < rate * 1_000_000);
     games++;
     if (chosen.length === 0) continue;
+    const fields = game.fen.split(" ");
+    const firstPly = (Number(fields[5] ?? 1) - 1) * 2 + (fields[1] === "b" ? 1 : 0);
     let pos = chess.parseFen(game.fen);
     const wanted = new Set(chosen);
     for (let ply = 0; ply <= chosen[chosen.length - 1]; ply++) {
@@ -171,7 +184,7 @@ export async function* samples(path: string, rate: number, maxGames: number,
         const lastTo = ply > 0 ? chess.parseSquare(game.moves[ply - 1].slice(2, 4)) : -1;
         const ourLastTo = ply > 1 ? chess.parseSquare(game.moves[ply - 2].slice(2, 4)) : -1;
         kept++;
-        yield { pos, ply, lastTo, ourLastTo, played: game.moves[ply] };
+        yield { pos, ply: firstPly + ply, lastTo, ourLastTo, played: game.moves[ply] };
       }
       const move = uciMove(pos, game.moves[ply]);
       if (move === null) { skipped++; break; }

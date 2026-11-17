@@ -2,10 +2,11 @@
 // 10 reply checks of strength.ts) on Stockfish-labelled positions, ranks the concepts by how much
 // the validation loss rises when each one's weight alone is zeroed, then refits smaller sets:
 // the reply checks alone, the reply checks plus the N most useful concepts, and the concepts
-// without the reply checks. Writes data/weights-prune-<name>.json for each (playable by uci.ts).
+// without the reply checks. Writes weights-prune-<name>.json for each (playable by uci.ts) to --out-dir
+// (data/ by default: give a scratch directory for a trial run).
 //
 //   bun src/variants/engine-searchless/prune.ts [--train-file data/sf-train.jsonl]
-//     [--valid-file data/sf-valid.jsonl] [--epochs 6] [--tops 5,10,20,40]
+//     [--valid-file data/sf-valid.jsonl] [--epochs 6] [--tops 5,10,20,40] [--out-dir data]
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -40,7 +41,8 @@ function maskOf(keep: Iterable<number>): Uint8Array {
 }
 
 /* Fit under `mask`, report, and write the weights file. */
-function fit(label: string, mask: Uint8Array, trainData: Dataset, valid: Dataset, opts: ReturnType<typeof options>): Float64Array {
+function fit(label: string, mask: Uint8Array, trainData: Dataset, valid: Dataset, opts: ReturnType<typeof options>,
+  outDir: string): Float64Array {
   const quiet = console.log;
   console.log = () => {};
   const w = train(trainData, valid, set.count, opts, mask);
@@ -49,7 +51,7 @@ function fit(label: string, mask: Uint8Array, trainData: Dataset, valid: Dataset
   const used = mask.reduce((a, b) => a + b, 0);
   console.log(`${label.padEnd(18)} ${String(used).padStart(3)} features: validation ${(100 * v.accuracy).toFixed(2)}% ` +
     `(loss ${v.logLoss.toFixed(4)})`);
-  writeFileSync(join(dataDir, `weights-prune-${label}.json`), JSON.stringify({ set: "strength", features: set.count,
+  writeFileSync(join(outDir, `weights-prune-${label}.json`), JSON.stringify({ set: "strength", features: set.count,
     names: Array.from({ length: set.count }, (_, k) => name(k)),
     weights: Array.from(w, (x) => Math.round(x * 1e4) / 1e4) }) + "\n");
   return w;
@@ -63,13 +65,14 @@ async function main(argv: readonly string[]): Promise<void> {
   const trainFile = value("--train-file", join(dataDir, "sf-train.jsonl"));
   const validFile = value("--valid-file", join(dataDir, "sf-valid.jsonl"));
   const tops = value("--tops", "5,10,20,40").split(",").map(Number);
+  const outDir = value("--out-dir", dataDir);
   const opts = { ...options([]), epochs: Number(value("--epochs", "6")) };
   const trainData = await load("training", trainFile);
   const valid = await load("validation", validFile);
 
   const concepts = Array.from({ length: CONCEPTS.length }, (_, k) => k);
   const replies = Array.from({ length: set.count - CONCEPTS.length }, (_, i) => CONCEPTS.length + i);
-  const full = fit("full", maskOf([...concepts, ...replies]), trainData, valid, opts);
+  const full = fit("full", maskOf([...concepts, ...replies]), trainData, valid, opts, outDir);
 
   const base = evaluate(valid, full).logLoss;
   const rise = concepts.map((k) => {
@@ -79,9 +82,9 @@ async function main(argv: readonly string[]): Promise<void> {
   console.log("concepts by validation loss rise when zeroed:");
   for (const { k, rise: r } of rise.slice(0, Math.max(...tops))) console.log(`  ${name(k).padEnd(44)} +${r.toFixed(5)}`);
 
-  fit("replies", maskOf(replies), trainData, valid, opts);
-  for (const n of tops) fit(`replies-top${n}`, maskOf([...replies, ...rise.slice(0, n).map((r) => r.k)]), trainData, valid, opts);
-  fit("concepts", maskOf(concepts), trainData, valid, opts);
+  fit("replies", maskOf(replies), trainData, valid, opts, outDir);
+  for (const n of tops) fit(`replies-top${n}`, maskOf([...replies, ...rise.slice(0, n).map((r) => r.k)]), trainData, valid, opts, outDir);
+  fit("concepts", maskOf(concepts), trainData, valid, opts, outDir);
 }
 
 if (import.meta.main) await main(process.argv.slice(2));
