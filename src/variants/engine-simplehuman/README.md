@@ -22,7 +22,7 @@ Two later experiments, built from the depth-5 version (see Tried 12-14):
 - `engine-simplehuman-knobs.ts`: one vision per kind of move (check, capture, retreat, other),
   all in `seesMove()`; used only to screen settings at level 10.
 - `engine-simplehuman-2knob.ts`: two knobs per level, depth and vision; checks are noticed at
-  0.85 of the vision. **Much slower at the top**: level 10 searches 6 plies, 1.9-3.3 s a move in
+  a share of the vision rising from 0.53 at level 2 to 0.85 at level 10. **Much slower at the top**: level 10 searches 6 plies, 1.9-3.3 s a move in
   Bun where the depth-5 version takes 0.1-0.25 s (8-15 times slower), and 1000 games against
   Maia-1900 took about 45 minutes instead of about 12. Slower still in a browser.
 
@@ -208,7 +208,34 @@ Play either in the web app with
     Played against each other (300 games, own seeds), levels of the same depth are 64-119 Elo
     apart, but where the depth grows the deeper side wins more: 3 to 4 +86, 6 to 7 +166, 7 to 8
     +170, 9 to 10 +250. Each side is the other's exact blind spot there, so these gaps are wider
-    than against other opponents. Its mistakes in the same positions are not measured yet.
+    than against other opponents.
+15. **A check share that rises with the level** (`engine-simplehuman-2knob.ts`, replacing
+    try 14's levels 2-9). Measured with `style-human.py --positions` on 100 games per level,
+    level n against Lichess players rated 800 + 100n (Maia at the same rating as a reference),
+    try 14's levels were 1.21-2.13 times off people. They found mates in one far more often than
+    people (misses 0.14-0.80 of people's rate), blundered 1.1-1.6 times as often, and hung
+    material 1.6-2.6 times as often at levels 4-6. A screen at levels 3, 5 and 8 found that a lower
+    check share helps the weaker levels most (level 3: 2.13 at 0.85, 1.37 at 0.55) but hurts level
+    8 (1.21 at 0.85, 1.66 at 0.55). Giving captures less than a full second look made every level
+    hang far more material and lose strength. So checks are now seen at 0.45 + 0.04 x level of
+    the vision (level 10 keeps 0.85), and vision was raised to win back the strength. Level 2
+    goes to full vision; level 3 moves to depth 3. Placed against engine.ts at the same level
+    (pooled 400-1000 games):
+
+        level  depth  vision  target  measured  times off people (try 14 -> 15; Maia)
+          2      2     1024     945      948      1.67 -> 1.57; 1.89
+          3      3      795    1046     1018      2.13 -> 1.51; 2.06
+          4      3      872    1148     1168      1.61 -> 1.50; 1.67
+          5      3      940    1249     1242      1.42 -> 1.41; 1.53
+          6      3      998    1350     1344      1.57 -> 1.47; 1.63
+          7      4      965    1451     1447      1.50 -> 1.33; 1.67
+          8      5      942    1553     1536      1.21 -> 1.15; 1.54
+          9      5     1003    1654     1684      1.51 -> 1.41; 1.24
+
+    Every level is closer to people, mostly because mates in one are now missed about as often as
+    people miss them (0.75-1.46 of their rate). Move matching is unchanged (28-32%) except at
+    level 3, where depth 3 with low vision matches fewer moves (26.6%, from 32.6%) and hangs
+    material 3.1 times as often as people. Blunders stay 1.1-1.6 times people's rate.
 
 ## Verdict
 

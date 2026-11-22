@@ -419,7 +419,7 @@ class Search {
       : !seesMove(next, this.skill, move);
   }
 
-  /* Count a node and say whether to stop. The limits are checked
+  /* Count a node and say whether to do The limits are checked
      every 1024 nodes from depth 2 on: the first depth always
      finishes, so there is always a move to play. */
   countNodeAndCheckStop(): boolean {
@@ -517,7 +517,7 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
    hanging, miss threats against them and miss mates in one, and the
    evaluation itself is never distorted. Captures are hard to miss,
    so they get a second chance; checks, even mating ones, are easier
-   to miss than other moves (CHECK_SHARE of the vision), as people
+   to miss than other moves (checkShare() of the vision), as people
    both miss their own mates and walk into the opponent's.
 
    (engine.ts turns five settings per level: depth, a share of
@@ -537,7 +537,14 @@ function limitsFor(go: Go, side: Colour, level: number): Limits {
 */
 
 const SKILL_MAX = 10;
-const CHECK_SHARE = 0.85;   // a check's vision, as a share of the level's
+
+/* A check's vision, as a share of the level's: 0.53 at level 2
+   rising to 0.85 at level 10. Weaker players miss more mates in one
+   (theirs and the opponent's); a single share left the lower levels
+   finding them far more often than people at their rating do. */
+function checkShare(level: number): number {
+  return 0.45 + 0.04 * level;
+}
 
 /* Hashing constants, here and in zobristKeys(). The two multipliers
    were chosen for how well they scramble bits. The seeds are
@@ -552,20 +559,21 @@ const ZOBRIST_SEED = 0x2545F491;    // seeds zobristKeys()
    noticing a move, placed on engine.ts's targets (ratings on its
    scale, Maia-1900 = 1755). Measured: level 10 against Maia-1900
    over 1000 games; levels 2..9 against engine.ts at the same level
-   over 400 games, read off that level's measured rating (about +-35).
+   over 400 to 1000 games, read off that level's measured rating
+   (about +-35 at 400 games).
    Level n is at index n - 1; level 1, the random mover, ignores its
    settings. */
 const LEVEL_SETTINGS: readonly LevelSettings[] = [
   //                               level  target  measured
   { depth: 0, vision: 0 },        //  1
-  { depth: 2, vision: 931 },      //  2    945     958
-  { depth: 2, vision: 1024 },     //  3   1046    1052
-  { depth: 3, vision: 830 },      //  4   1148    1165
-  { depth: 3, vision: 905 },      //  5   1249    1253
-  { depth: 3, vision: 980 },      //  6   1350    1379
-  { depth: 4, vision: 935 },      //  7   1451    1436
-  { depth: 5, vision: 915 },      //  8   1553    1523
-  { depth: 5, vision: 969 },      //  9   1654    1645
+  { depth: 2, vision: 1024 },     //  2    945     948
+  { depth: 3, vision: 795 },      //  3   1046    1018
+  { depth: 3, vision: 872 },      //  4   1148    1168
+  { depth: 3, vision: 940 },      //  5   1249    1242
+  { depth: 3, vision: 998 },      //  6   1350    1344
+  { depth: 4, vision: 965 },      //  7   1451    1447
+  { depth: 5, vision: 942 },      //  8   1553    1536
+  { depth: 5, vision: 1003 },     //  9   1654    1684
   { depth: 6, vision: 1024 },     // 10   1755    1744
 ];
 
@@ -594,7 +602,7 @@ function skillFor(level: number, seed: number): Skill {
     level: clamped,
     depth,
     vision,
-    checkVision: Math.round(vision * CHECK_SHARE),
+    checkVision: Math.round(vision * checkShare(clamped)),
     seed,
     seedKey: mix32(seed === 0 ? BUILT_IN_SEED : seed),
   });
@@ -602,16 +610,19 @@ function skillFor(level: number, seed: number): Skill {
 
 /* Does the player notice `move`? `after` is the position the move
    leads to, so its key, whether it gives check and what it captured
-   are known. Two independent 10-bit draws from one hash: the first
-   chance, against the check vision for a check, and the second one
-   that other captures get. */
+   are known. Two independent 10-bit draws come from one hash, and
+   each kind of move gets its own number of looks:
+     check    one look, at the check vision (even if it also captures)
+     capture  two looks at the vision: a second chance
+     quiet    one look at the vision */
 function seesMove(after: Position, skill: Skill, move: Move): boolean {
   const hash = mix32(after.key ^ Math.imul(move, GOLDEN) ^ skill.seedKey);
-  const draw = (hash >>> 20) & 1023;
-  if (inCheck(after)) return draw < skill.checkVision;
-  if (draw < skill.vision) return true;
+  const firstLook = (hash >>> 20) & 1023;
+  const secondLook = (hash >>> 8) & 1023;
   const capture = after.capturedPiece !== EMPTY || moveType(move) === FLAG_EP;
-  return capture && ((hash >>> 8) & 1023) < skill.vision;
+  if (inCheck(after)) return firstLook < skill.checkVision;
+  if (capture) return firstLook < skill.vision || secondLook < skill.vision;
+  return firstLook < skill.vision;
 }
 
 /* The root moves the player overlooks. If it would overlook them all,
