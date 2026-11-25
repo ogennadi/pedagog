@@ -7,29 +7,35 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 const here = dirname(Bun.main);
 const root = resolve(here, "..", "..");
 const defaultEngine = resolve(root, "engine.ts");
-const book = resolve(here, "8moves_v3.epd");
+const defaultBook = resolve(here, "8moves_v3.epd");
 const help = `Usage: bun src/tools/match.js <A> <B> <even-games> [options]
 
 Players: L1..L10 (Pedagog, aggressive style), R1..R10 (Pedagog, plain reference style,
-         Aggressive=false), L10@<depth>, prev:L1..L10, maia-1100|maia-1500|maia-1900
+         Aggressive=false), L10@<depth>, prev:L1..L10, maia-1100|maia-1500|maia-1900,
+         gaia1..gaia20 (Gaia at that Skill Level, Skill Seed 1, no book),
+         sf<elo> (Stockfish with UCI_LimitStrength and UCI_Elo=<elo>, at the depth its Skill picks at)
 Options:
   --engine PATH             Current Pedagog source (default: PEDAGOG_ENGINE or repo engine)
   --previous-engine PATH    Source for prev:<level> (default: PEDAGOG_PREVIOUS_ENGINE)
+  --option NAME=VALUE       UCI option for current-engine Pedagog players (repeatable)
   --time SECONDS            Fixed per-move time for Pedagog (cutechess st=N)
   --seed INTEGER            cutechess opening RNG seed (default: 1)
+  --book none|FILE          none: start every game from the initial position; FILE: an EPD
+                            book played in order (default: the 8-move book, in random order)
   --concurrency N           Parallel games (default: min(10, CPU count))
   --tag NAME                Output basename (must be new unless --force)
   --out DIR                 Output directory (default: src/tools/out)
   --force                   Replace only this run's PGN and metadata files
   --help                    Show this help
 
-Environment: CUTECHESS_CLI, LC0, MAIA_DIR, PEDAGOG_ENGINE,
+Environment: CUTECHESS_CLI, LC0, MAIA_DIR, GAIA, STOCKFISH, PEDAGOG_ENGINE,
 PEDAGOG_PREVIOUS_ENGINE, PEDAGOG_OUTPUT_DIR, PEDAGOG_CONCURRENCY.`;
 
 const values = new Map();
 const positional = [];
+const engineOptions = [];
 let force = false;
-const valuedOptions = new Set(["--engine", "--previous-engine", "--time", "--seed", "--concurrency", "--tag", "--out"]);
+const valuedOptions = new Set(["--engine", "--previous-engine", "--time", "--seed", "--book", "--concurrency", "--tag", "--out"]);
 for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
   if (arg === "--help" || arg === "-h") {
@@ -37,6 +43,10 @@ for (let i = 2; i < process.argv.length; i++) {
     process.exit(0);
   } else if (arg === "--force") {
     force = true;
+  } else if (arg === "--option") {
+    const value = process.argv[++i];
+    if (!value || !/^[^=]+=.*$/.test(value)) throw new Error("--option expects NAME=VALUE");
+    engineOptions.push(value);
   } else if (valuedOptions.has(arg)) {
     const value = process.argv[++i];
     if (!value || value.startsWith("--")) throw new Error(`missing value for ${arg}`);
@@ -54,6 +64,10 @@ const games = Number(gamesArg);
 if (!Number.isSafeInteger(games) || games < 2 || games % 2 !== 0) throw new Error("game count must be a positive even integer");
 const seed = Number(values.get("--seed") ?? 1);
 if (!Number.isSafeInteger(seed) || seed < 0) throw new Error("--seed must be a non-negative integer");
+const bookValue = values.get("--book");
+const useBook = bookValue !== "none";
+const book = bookValue === undefined ? defaultBook : resolve(bookValue);
+const bookOrder = bookValue === undefined ? "random" : "sequential";
 const concurrency = Number(values.get("--concurrency") ?? process.env.PEDAGOG_CONCURRENCY ?? Math.min(10, availableParallelism()));
 if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
 const fixedTime = values.get("--time") === undefined ? undefined : Number(values.get("--time"));
@@ -81,7 +95,7 @@ const metadataPath = resolve(outDir, `${tag}.json`);
 const outputExists = existsSync(pgn) || existsSync(metadataPath);
 if (outputExists && !force) throw new Error(`refusing to overwrite ${tag}; choose a new --tag or pass --force`);
 if (!existsSync(enginePath)) throw new Error(`Pedagog engine not found: ${enginePath}`);
-if (!existsSync(book)) throw new Error(`opening book not found: ${book}`);
+if (useBook && !existsSync(book)) throw new Error(`opening book not found: ${book}`);
 
 const players = [];
 const usedArtifacts = new Map();
@@ -108,8 +122,9 @@ function engineArgs(spec) {
       : fixedTime !== undefined ? [`st=${fixedTime}`]
         : ["tc=inf"]; // every level is depth-limited
     const style = plain ? ["option.Aggressive=false"] : [];
+    const extra = previous ? [] : engineOptions.map((option) => `option.${option}`);
     return ["-engine", `name=${name}`, `cmd=${process.execPath}`, `arg=${source}`, "proto=uci", ...limit,
-      `option.Skill_Level=${level}`, ...style];
+      `option.Skill_Level=${level}`, ...style, ...extra];
   }
   if (/^maia-(1100|1500|1900)$/.test(spec)) {
     const weights = resolve(maiaDir, `${spec}.pb.gz`);
@@ -120,6 +135,33 @@ function engineArgs(spec) {
     usedArtifacts.set(weights, { kind: "Maia network weights", path: weights });
     return ["-engine", `name=${spec}`, `cmd=${lc0Executable}`, `arg=--weights=${weights}`, "arg=--backend=blas",
       "proto=uci", "tc=inf", "nodes=1", "option.Threads=1"];
+  }
+  const gaiaMatch = /^gaia(\d+)$/.exec(spec);
+  if (gaiaMatch) {
+    const level = Number(gaiaMatch[1]);
+    if (level < 1 || level > 20) throw new Error(`invalid Gaia skill level: ${spec}`);
+    const gaia = executablePath(process.env.GAIA ?? "gaiachess");
+    if (!gaia) throw new Error("Gaia not found (set GAIA or add gaiachess to PATH)");
+    usedArtifacts.set(gaia, { kind: "Gaia executable", path: gaia });
+    // A Skill Level below 20 caps Gaia's own depth, so tc=inf ("go infinite") still ends.
+    return ["-engine", `name=${spec}`, `cmd=${gaia}`, "proto=uci", "tc=inf",
+      `option.Skill Level=${level}`, "option.Skill Seed=1", "option.OwnBook=false",
+      "option.Ponder=false", "option.Threads=1"];
+  }
+  const stockfishMatch = /^sf(\d+)$/.exec(spec);
+  if (stockfishMatch) {
+    const elo = Number(stockfishMatch[1]);
+    if (elo < 1320 || elo > 3190) throw new Error(`Stockfish UCI_Elo must be 1320..3190: ${spec}`);
+    const stockfish = executablePath(process.env.STOCKFISH ?? "stockfish");
+    if (!stockfish) throw new Error("Stockfish not found (set STOCKFISH or add it to PATH)");
+    usedArtifacts.set(stockfish, { kind: "Stockfish executable", path: stockfish });
+    // Stockfish's Skill picks its move when iterative deepening reaches depth 1 + int(level)
+    // (search.h, Skill), so searching exactly that deep plays the same moves as any longer
+    // search, without a clock to lose on when the machine is busy.
+    const e = (elo - 1320) / (3190 - 1320);
+    const level = Math.min(19, Math.max(0, (((37.2473 * e - 40.8525) * e + 22.2943) * e - 0.311438)));
+    return ["-engine", `name=${spec}`, `cmd=${stockfish}`, "proto=uci", "tc=inf", `depth=${1 + Math.trunc(level)}`,
+      "option.UCI_LimitStrength=true", `option.UCI_Elo=${elo}`, "option.Threads=1", "option.Hash=16"];
   }
   throw new Error(`unknown player spec: ${spec}`);
 }
@@ -132,7 +174,7 @@ if (outputExists) {
 }
 const cmd = [cutechess, ...players,
   "-each", "timemargin=200",
-  "-openings", `file=${book}`, "format=epd", "order=random", "plies=16", "-repeat",
+  ...(useBook ? ["-openings", `file=${book}`, "format=epd", `order=${bookOrder}`, "plies=16", "-repeat"] : []),
   "-games", "2", "-rounds", String(games / 2), "-concurrency", String(concurrency), "-srand", String(seed),
   "-draw", "movenumber=40", "movecount=8", "score=10",
   "-resign", "movecount=3", "score=600", "twosided=true",
@@ -171,11 +213,11 @@ const metadata = {
     eloDifference: /Elo difference: (\S+) \+\/- (\S+)/.exec(text)?.slice(1) ?? null,
   },
   seed,
-  openingBook: { path: book, sha256: await sha256(book) },
+  openingBook: useBook ? { path: book, sha256: await sha256(book) } : null,
   artifacts,
   git: { revision, dirty: status.exitCode !== 0 || status.stdout.toString().trim().length > 0 },
   runtime: { bun: Bun.version, platform: process.platform, architecture: process.arch, hardwareConcurrency: availableParallelism() },
-  configuration: { games, concurrency, fixedMoveTimeSeconds: fixedTime ?? null },
+  configuration: { games, concurrency, fixedMoveTimeSeconds: fixedTime ?? null, engineOptions },
   durationSeconds: Math.round((Date.now() - started) / 1000),
 };
 writeFileSync(metadataPath, JSON.stringify(metadata, null, 2) + "\n", { flag: "wx" });

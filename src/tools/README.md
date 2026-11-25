@@ -8,7 +8,7 @@ require `lc0` plus Maia network files. `src/tools/blunders.py` and the variants'
 checkers (`src/variants/engine-aggressive/style.py`,
 `src/variants/engine-constrictor/style-constrictor.py`) need `python-chess`;
 `src/tools/plot.py` needs Matplotlib. Set executable
-locations using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, and `STOCKFISH`, or pass
+locations using `CUTECHESS_CLI`, `LC0`, `MAIA_DIR`, `STOCKFISH`, and `GAIA`, or pass
 paths on the command line where supported. Maia weights default to
 `src/tools/models/`.
 
@@ -30,6 +30,27 @@ depth 3 (a level's own depth ceiling still applies, so a cap above it does nothi
 current source. Compare an earlier engine explicitly with e.g.
 `bun run match prev:L10 L10 20 --previous-engine path/to/old/engine.ts
 --time 1 --seed 42 --tag old-vs-current-20261009`.
+
+Two engine-based opponents are also available, both untimed. `sf<elo>` is
+Stockfish (`STOCKFISH`) with `UCI_LimitStrength` and `UCI_Elo=<elo>`, searched
+to exactly the depth at which its Skill picks a move. Longer searches play the
+same moves, so it cannot lose on time when the machine is busy. Its pick is
+seeded from the clock, so its games do not repeat. `gaia<N>` is Gaia
+(`GAIA`) at Skill Level N, Skill Seed 1, without its book. `--option
+NAME=VALUE` (repeatable) passes a UCI option to the current-engine Pedagog
+players, for variants with extra options:
+
+```sh
+bun run match sf1550 maia-1900 1000 --concurrency 24 --tag sf1550-vs-maia1900
+bun run match L10 gaia9 300 --engine src/variants/engine-trickster/engine-trickster.ts --option Trick_Lambda=0
+```
+
+Games start from cutechess's random pick of 8-move positions (`8moves_v3.epd`),
+each played with both colours. `--book none` starts every game from the initial
+position instead, for measuring a player's own opening; the games then vary
+only when a player does, such as `sf<elo>`. `--book FILE` plays the positions of
+another EPD file in order, each with both colours, for short starts that still
+leave the opening to the players (`src/variants/engine-hedgehog/starts2.epd`).
 
 Every match writes a PGN and a same-tag JSON metadata file under `src/tools/out/`.
 Metadata records the wrapper invocation and exact cutechess argument vector,

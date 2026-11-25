@@ -92,9 +92,11 @@ function chess960Fen(n) {
 const bookTree = parseTree(TREE);
 const namedLines = OPENINGS.map((o) => ({ ...o, line: o.moves.split(" ") }));
 
-/* The next book move for the side to move, chosen by weight among the tree's replies. */
+/* The next book move for the side to move, chosen by weight among the tree's replies.
+   "?book=off" in the page's URL turns the book off, for style variants that open on their own. */
+const bookOff = new URLSearchParams(location.search).get("book") === "off";
 function bookMove() {
-  if (variant !== "standard") return null;
+  if (variant !== "standard" || bookOff) return null;
   const replies = bookChildren(bookTree, game.history().map((m) => m.san));
   return replies.length ? pickWeighted(replies, Math.random()).san : null;
 }
