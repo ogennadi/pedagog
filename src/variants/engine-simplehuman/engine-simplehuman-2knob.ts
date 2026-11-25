@@ -548,8 +548,8 @@ function checkShare(level: number): number {
 
 /* Hashing constants, here and in zobristKeys(). The two multipliers
    were chosen for how well they scramble bits. The seeds are
-   arbitrary (any distinct nonzero values would do), but changing
-   them changes which moves each skill level overlooks. */
+   arbitrary, but changing them changes which moves each skill level
+   overlooks. */
 const GOLDEN = 0x9E3779B9;          // 2^32 / golden ratio (Fibonacci hashing)
 const MIX_MULTIPLIER = 0x45d9f3b;   // from a well-known 32-bit integer hash
 const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0

@@ -1,16 +1,41 @@
 # engine-hedgehog
 
-A style variant from `../STYLE-IDEAS.md`: the hedgehog / hippo. It puts its pawns on its 3rd
+A style variant: the hedgehog / hippo. It puts its pawns on its 3rd
 rank, fianchettoes its bishops, keeps its pieces behind the pawns, and breaks with a pawn once
 the opponent has overextended. First, how often the usual players already play like this; then
 the engine, `engine-hedgehog.ts`, its tuning and its strength against Maia-1900.
+
+## Related human openings
+
+The engine's target shape is closest to the Hippopotamus. How the named setups compare:
+
+- **Hippopotamus (Hippo)**: pawns on a6, b6, d6, e6, g6 and h6 (a3 ... h3 for White), both
+  bishops fianchettoed, knights on d7 and e7, the c- and f-pawns at home. Playable against
+  almost anything. This is exactly the engine's skeleton (a, b, d, e, g and h on the 3rd
+  rank, c and f at home, b2/g2 fianchettoes).
+- **Hedgehog**: from the English or the Sicilian, after ...c5xd4: pawns on a6, b6, d6 and
+  e6, bishops on b7 and e7, waiting behind the pawns until the ...b5 or ...d5 break (the
+  checker's "spring"). The engine never aims for the c-pawn exchange that defines it, so it
+  reaches only the queenside half of the shape, and then only by transposition.
+- **Cow** (popularised by WFM Anna Cramling): White plays e3 and d3, with the knights going
+  via e2 and d2 to g3 and b3, then breaks with e4 or d4. It's a small-centre shell too, but
+  only two pawns stand on the 3rd rank, and the engine's knights would sooner go to f3 and c3.
+- **Norwegian Rat** (Agdestein's line, also played by Carlsen): 1.e4 g6 2.d4 Nf6 3.e5 Nh5,
+  then ...Ng7 and ...d6. A provocative Modern Defence sideline, not a shell; it shares only
+  ...g6 and ...d6 with the hippo.
+- **Alien Gambit**: 1.e4 c6 2.d4 d5 3.Nc3 dxe4 4.Nxe4 Nf6 5.Ng5 h6 6.Nxf7, a Caro-Kann knight
+  sacrifice. The opposite of this style; it doesn't belong here.
+
+A book of hippo and hedgehog lines, played before the engine's own moves, would give the
+recognisable shapes from move 1. The engine doesn't have one: its style comes only from the
+evaluation.
 
 ## The style checker
 
 `hedgehog_check.py` (python-chess) reads PGNs and gives, per player and colour, the share of
 games showing each sign. "Move N" is the player's own Nth move, and ranks count from its side.
 
-- **shell**: 4+ of its pawns on its 3rd rank after move 15 (the STYLE-IDEAS sign)
+- **shell**: 4+ of its pawns on its 3rd rank after move 15
 - **skeleton**: how many of its a, b, d, e, g and h pawns stand on its 3rd rank then (mean, 0-6)
 - **fianchetto**: a bishop on b2 or g2 behind its pawn on b3 or g3 then; **double**: both
 - **stays back**: none of its pawns reaches its 5th rank in moves 1-20
@@ -45,8 +70,7 @@ As Black the shell is commoner (sf1550 5.0 %, Maia 2.1 %) than as White (2.1 %, 
 fianchettoes are mostly as Black (32 %).
 
 With the 8-move book (`r11/verify3`, 300 games), plain L10 showed the shell in 1.1 % of games
-and Maia in 2.9 %. STYLE-IDEAS.md reports 1.3 % and 6.0 % for the same games, from a script
-that was not kept, so the Maia figure cannot be checked.
+and Maia in 2.9 %.
 
 - **The hedgehog is almost never played.** Pedagog never builds the shell, and the full
   hedgehog shows in 0 to 0.4 % of games for every player. A variant that does it in most
@@ -67,6 +91,8 @@ same way. Its weights are UCI spin options, in middlegame centipawns:
 - `Hedgehog_Advance`: charged per own pawn past its 4th rank, unless passed
 - `Hedgehog_Fianchetto`: per bishop on b2/g2 with its pawn on b3/g3
 - `Hedgehog_Fade`: the phase (24 = all pieces, 0 = none) at which the term is gone
+- `Hedgehog_Recapture`: settling exchanges at the leaves (see "Lower levels"): 0 off, 1 when
+  the line ends on the engine's own capture (default), 2 after any capture
 
 The defaults are run H's weights (Shell 40, Cap 5, Advance 80, Fianchetto 20, Fourth 0, Fade 0).
 The term is scaled by the phase like the middlegame tables. Bench: about 17 % fewer nodes per
@@ -146,3 +172,72 @@ played (same start, same colour), so the stopped runs are compared fairly.
 - **It is slow because 2-knob L10 is a full 6-ply search** with no transposition table and
   only captures-first ordering: a median of about 2 s a move in the matches (90th percentile
   7.5 s, worst 50 s), the same as plain 2-knob. The main engine's L10 takes about 0.03 s.
+
+## Chess960
+
+Is the style still visible when the pieces start elsewhere? 48 games of L10 (H's weights)
+against sf1550, 2026-11-25, from 24 Chess960 starts (seeded random, the standard array
+excluded), each with both colours (`match.js --variant 960 --book FILE`). Only the style was
+measured; the score, 20-26-2, is within the noise.
+
+| Player | Games | Shell | Skeleton | Fianchetto | Double | Stays back | Spring | Hedgehog |
+|---|---|---|---|---|---|---|---|---|
+| L10 hedgehog | 46 | 87 % | 4.17 | 41 % | 4 % | 70 % | 82 % | 30 % |
+| sf1550 | 46 | 2 % | 0.72 | 7 % | 0 % | 4 % | 1 of 1 | 0 % |
+
+- **The style survives Chess960.** The shell shows in 87 % of games and the full hedgehog in
+  30 %, as in standard chess against sf1550 (run H: 80 % and 32 %). The bonus only looks at
+  pawns, which start on the same squares in every Chess960 array, and at b2/g2 fianchettoes.
+- **Double fianchettoes are rarer** (4 %): the bishops often start far from b2 and g2.
+
+## Lower levels
+
+Hedgehog against plain 2-knob at the same level (`prev:L<n>` with `--previous-engine`), from
+`starts2.epd`, 2026-11-25; 40 games per level for the style. Level 1, the random mover, is left
+as it is. Plain 2-knob never built the shell at any level.
+
+| Level | Depth | Shell | Hedgehog |
+|---|---|---|---|
+| L2 | 2 | 89 % | 50 % |
+| L3 | 3 | 38 % | 9 % |
+| L4 | 3 | 49 % | 16 % |
+| L5 | 3 | 53 % | 18 % |
+| L6 | 3 | 39 % | 3 % |
+| L7 | 4 | 71 % | 24 % |
+| L8 | 5 | 55 % | 26 % |
+| L9 | 5 | 64 % | 23 % |
+
+- **The style fades at odd depths.** At 3 plies the engine leaves more pawns at home at move 15
+  (2.1 to 2.5, against 1.4 at L2). L6 has almost full vision and fades as much as L3, so vision
+  isn't the cause.
+- **Root cause: the phantom gain of an unanswered capture.** 2-knob has no capture search, so an
+  odd-depth line ends on the engine's own move, and that move is often a capture of a defended
+  piece. The principal variations at L6 show it, for example `3...Qd4 4.Nxe4 Qxc4` at +272
+  and `4...Nbd7 5.Qf4 Qxb5` at +353. Gains of 150 to 350 cp drown the 40 cp shell bonus, and
+  early queen and knight sorties win. At even depths the line ends on the opponent's capture,
+  which makes the engine cautious and helps the shell.
+- **Fix:** at a leaf reached by the engine's own capture, `settle()` the exchange on that square
+  (stand pat or recapture, each side in turn, the level's vision applying to each recapture).
+  With it (`Hedgehog_Recapture` 1), the shell shows in 76 to 95 % of games at L3-L6 and 80 to
+  85 % at L8-L9. L2 and L7 are unchanged. Settling after any capture (2) gives the same at odd
+  depths but makes L2 and L7 far stronger (91 % and 84 % against 2-knob), so it is not used.
+- **But settling removes the blunders the levels were calibrated with:** the odd levels then
+  score 76 to 90 % against 2-knob at the same level. So their vision was lowered until they
+  scored about 50 %. A grid of four visions per level, then a check at the interpolated value:
+
+| Level | 2-knob vision | Hedgehog vision | Games | Score | Shell | Hedgehog |
+|---|---|---|---|---|---|---|
+| L3 | 795 | 736 | 200 | 49 % | 78 % | 28 % |
+| L4 | 872 | 810 | 200 | 48 % | 82 % | 36 % |
+| L5 | 940 | 850 | 200 | 51 % | 86 % | 41 % |
+| L6 | 998 | 884 | 200 | 52 % | 84 % | 40 % |
+| L8 | 942 | 894 | 120 | 45 % | 84 % | 33 % |
+| L9 | 1003 | 921 | 120 | 46 % | 80 % | 40 % |
+
+- **Every level from 2 to 10 now shows the style:** the shell in 71 to 89 % of games and the
+  full hedgehog in 24 to 50 % (L7 lowest), at about 2-knob's strength (the scores are within
+  about +-7 % at 200 games and +-9 % at 120).
+- **The score is steep in vision.** At L3, vision 695 scored 28 % and 795 scored 82 %, so small
+  changes matter; the values above are interpolated, then checked.
+- **The even levels play exactly as before:** L2, L7 and L10 chose the same moves as the
+  committed engine in 21 positions each, so the earlier L10 results still hold.

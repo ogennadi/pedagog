@@ -42,7 +42,7 @@ players, for variants with extra options:
 
 ```sh
 bun run match sf1550 maia-1900 1000 --concurrency 24 --tag sf1550-vs-maia1900
-bun run match L10 gaia9 300 --engine src/variants/engine-trickster/engine-trickster.ts --option Trick_Lambda=0
+bun run match L10 gaia9 300 --engine src/variants/engine-hedgehog/engine-hedgehog.ts --option Hedgehog_Shell=0
 ```
 
 Games start from cutechess's random pick of 8-move positions (`8moves_v3.epd`),
@@ -51,6 +51,8 @@ position instead, for measuring a player's own opening; the games then vary
 only when a player does, such as `sf<elo>`. `--book FILE` plays the positions of
 another EPD file in order, each with both colours, for short starts that still
 leave the opening to the players (`src/variants/engine-hedgehog/starts2.epd`).
+`--variant 960` plays Chess960 (cutechess `fischerandom`) from a `--book FILE` of
+Chess960 start positions.
 
 Every match writes a PGN and a same-tag JSON metadata file under `src/tools/out/`.
 Metadata records the wrapper invocation and exact cutechess argument vector,

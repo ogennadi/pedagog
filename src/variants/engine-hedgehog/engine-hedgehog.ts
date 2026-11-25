@@ -13,7 +13,11 @@
    rank, dislikes them past its fourth and likes fianchettoed
    bishops: a hedgehog (or hippo) set-up behind which it waits. The
    style counts only for the engine's own side, in hedgehogBonus()
-   (S3). See README.md beside this file for the measurements.
+   (S3). At odd depths a line that ends on the engine's own capture
+   settles the exchange there (Search.settle()), or the phantom gain
+   of an unanswered capture drowns the style; the levels that search
+   an odd depth have their vision lowered to match 2-knob's strength.
+   See README.md beside this file for the measurements.
 
    Runs in Bun, which runs TypeScript directly
    (`bun src/variants/engine-hedgehog/engine-hedgehog.ts`),
@@ -366,7 +370,7 @@ class Search {
   /* One iteration of think(): the root searched to `depth`. */
   root(pos: Position, depth: number): Line {
     this.rootDepth = depth;
-    return this.search(pos, -INF, INF, depth, 0);
+    return this.search(pos, -INF, INF, depth, 0, NO_SQUARE);
   }
 
   /* Negamax to a fixed depth: terminate, try moves, keep the best line
@@ -377,15 +381,25 @@ class Search {
      stalemate.
 
      The skill may overlook a move (overlooks()). If it overlooks
-     every legal move, it judges the position as it stands. */
+     every legal move, it judges the position as it stands.
+
+     `taken` is the square of the capture that led here, if any: a
+     leaf reached by a capture may settle() the exchange on it. */
   search(
     pos: Position, alpha: Score, beta: Score,
-    depth: number, ply: number,
+    depth: number, ply: number, taken: Square,
   ): Line {
     if (this.countNodeAndCheckStop()) return STOPPED;
     if (ply > 0 && isDraw(pos)) return { score: DRAW, pv: NO_LINE };
     const atLeaf = depth === 0 || ply >= MAX_PLY - 1;
-    if (atLeaf) return { score: this.judge(pos), pv: NO_LINE };
+    if (atLeaf) {
+      const settles = taken !== NO_SQUARE && (this.skill.style.recapture >= 2 ||
+        (this.skill.style.recapture === 1 && pos.sideToMove !== this.side));
+      return {
+        score: settles ? this.settle(pos, taken, alpha, beta, ply) : this.judge(pos),
+        pv: NO_LINE,
+      };
+    }
 
     let bestScore = -INF, pv = NO_LINE;
     let raisedAlpha = alpha; // alpha, raised as better moves are found
@@ -396,7 +410,7 @@ class Search {
       legalMoveCount++;
       if (this.overlooks(next, move, ply)) continue;
       const child = this.search(next, -beta, -raisedAlpha,
-        depth - 1, ply + 1);
+        depth - 1, ply + 1, isCapture(pos, move) ? toSq(move) : NO_SQUARE);
       if (this.stopped) return STOPPED;
 
       const score = -child.score;
@@ -416,6 +430,35 @@ class Search {
     if (overlookedAll)
       return { score: this.judge(pos), pv: NO_LINE };
     return { score: bestScore, pv };
+  }
+
+  /* A leaf reached by a capture on `square`: the side to move may
+     stand pat (judge()) or recapture there, each side in turn, so a
+     line that ends on a capture of a defended piece is not scored as
+     a clean win. Only captures on `square` are tried, and the skill
+     may overlook them as it does any move. */
+  settle(
+    pos: Position, square: Square, alpha: Score, beta: Score, ply: number,
+  ): Score {
+    const standPat = this.judge(pos);
+    if (standPat >= beta || ply >= MAX_PLY - 1) return standPat;
+    let best = standPat, raisedAlpha = Math.max(alpha, standPat);
+    for (const move of generateMoves(pos)) {
+      if (toSq(move) !== square || !isCapture(pos, move)) continue;
+      const next = makeMove(pos, move);
+      if (next === null || this.overlooks(next, move, ply)) continue;
+      if (this.countNodeAndCheckStop()) return 0;
+      const score = -this.settle(next, square, -beta, -raisedAlpha, ply + 1);
+      if (this.stopped) return 0;
+      if (score > best) {
+        best = score;
+        if (score > raisedAlpha) {
+          raisedAlpha = score;
+          if (raisedAlpha >= beta) break;
+        }
+      }
+    }
+    return best;
   }
 
   /* Does the player fail to notice `move`, made at `ply` and leading
@@ -564,25 +607,28 @@ const BUILT_IN_SEED = 0x9E3779B9;   // stands in for Skill_Seed 0
 const ZOBRIST_SEED = 0x2545F491;    // seeds zobristKeys()
 
 /* Each level's depth, in plies, and vision, the chance out of 1024 of
-   noticing a move, placed on engine.ts's targets (ratings on its
-   scale, Maia-1900 = 1755). Measured: level 10 against Maia-1900
-   over 1000 games; levels 2..9 against engine.ts at the same level
-   over 400 to 1000 games, read off that level's measured rating
-   (about +-35 at 400 games).
+   noticing a move. 2-knob placed them on engine.ts's targets (ratings
+   on its scale, Maia-1900 = 1755; "2-knob" below). Settling exchanges
+   (Search.settle()) makes the odd-depth levels much stronger (76 to 90 %
+   against 2-knob at the same level), so their vision is lowered until
+   they score about 50 % against 2-knob at the same level ("score",
+   over 200 games at levels 3..6 and 120 at 8 and 9, about +-7 % and
+   +-9 %). Levels 2, 7 and 10 search an even depth, never settle and
+   keep 2-knob's settings.
    Level n is at index n - 1; level 1, the random mover, ignores its
    settings. */
 const LEVEL_SETTINGS: readonly LevelSettings[] = [
-  //                               level  target  measured
+  //                               level  target  2-knob  score
   { depth: 0, vision: 0 },        //  1
-  { depth: 2, vision: 1024 },     //  2    945     948
-  { depth: 3, vision: 795 },      //  3   1046    1018
-  { depth: 3, vision: 872 },      //  4   1148    1168
-  { depth: 3, vision: 940 },      //  5   1249    1242
-  { depth: 3, vision: 998 },      //  6   1350    1344
-  { depth: 4, vision: 965 },      //  7   1451    1447
-  { depth: 5, vision: 942 },      //  8   1553    1536
-  { depth: 5, vision: 1003 },     //  9   1654    1684
-  { depth: 6, vision: 1024 },     // 10   1755    1744
+  { depth: 2, vision: 1024 },     //  2    945
+  { depth: 3, vision: 736 },      //  3   1046    795     49 %
+  { depth: 3, vision: 810 },      //  4   1148    872     48 %
+  { depth: 3, vision: 850 },      //  5   1249    940     51 %
+  { depth: 3, vision: 884 },      //  6   1350    998     52 %
+  { depth: 4, vision: 965 },      //  7   1451
+  { depth: 5, vision: 894 },      //  8   1553    942     45 %
+  { depth: 5, vision: 921 },      //  9   1654   1003     46 %
+  { depth: 6, vision: 1024 },     // 10   1755
 ];
 
 /** A level's two knobs. */
@@ -608,11 +654,13 @@ interface Style {
   readonly advance: number;        // charged per own pawn past its fourth
   readonly fianchetto: number;     // per bishop on b2/g2 behind its pawn
   readonly fade: number;           // phase at which the style is gone
+  readonly recapture: number;      // leaf exchanges: 0 off, 1 after own capture, 2 any
 }
 
 /* Run H in README.md: the most hedgehog for the least strength. */
 const DEFAULT_STYLE: Style = Object.freeze({
   shell: 40, cap: 5, fourth: 0, advance: 80, fianchetto: 20, fade: 0,
+  recapture: 1,
 });
 
 /* The hedgehog's pawn files: a, b, d, e, g and h. The c- and f-pawns
@@ -1531,6 +1579,7 @@ const STYLE_OPTIONS: readonly (readonly [string, keyof Style])[] = [
   ["Hedgehog_Advance", "advance"],
   ["Hedgehog_Fianchetto", "fianchetto"],
   ["Hedgehog_Fade", "fade"],
+  ["Hedgehog_Recapture", "recapture"],
 ];
 
 /* The session after "setoption name <name> value <value>". Hash,

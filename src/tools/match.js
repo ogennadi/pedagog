@@ -22,6 +22,7 @@ Options:
   --seed INTEGER            cutechess opening RNG seed (default: 1)
   --book none|FILE          none: start every game from the initial position; FILE: an EPD
                             book played in order (default: the 8-move book, in random order)
+  --variant standard|960    960: Chess960 (cutechess fischerandom); needs --book FILE of 960 starts
   --concurrency N           Parallel games (default: min(10, CPU count))
   --tag NAME                Output basename (must be new unless --force)
   --out DIR                 Output directory (default: src/tools/out)
@@ -35,7 +36,7 @@ const values = new Map();
 const positional = [];
 const engineOptions = [];
 let force = false;
-const valuedOptions = new Set(["--engine", "--previous-engine", "--time", "--seed", "--book", "--concurrency", "--tag", "--out"]);
+const valuedOptions = new Set(["--engine", "--previous-engine", "--time", "--seed", "--book", "--variant", "--concurrency", "--tag", "--out"]);
 for (let i = 2; i < process.argv.length; i++) {
   const arg = process.argv[i];
   if (arg === "--help" || arg === "-h") {
@@ -68,6 +69,9 @@ const bookValue = values.get("--book");
 const useBook = bookValue !== "none";
 const book = bookValue === undefined ? defaultBook : resolve(bookValue);
 const bookOrder = bookValue === undefined ? "random" : "sequential";
+const variant = values.get("--variant") ?? "standard";
+if (!["standard", "960"].includes(variant)) throw new Error("--variant must be standard or 960");
+if (variant === "960" && (bookValue === undefined || !useBook)) throw new Error("--variant 960 needs --book FILE of Chess960 starts");
 const concurrency = Number(values.get("--concurrency") ?? process.env.PEDAGOG_CONCURRENCY ?? Math.min(10, availableParallelism()));
 if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be a positive integer");
 const fixedTime = values.get("--time") === undefined ? undefined : Number(values.get("--time"));
@@ -174,6 +178,7 @@ if (outputExists) {
 }
 const cmd = [cutechess, ...players,
   "-each", "timemargin=200",
+  ...(variant === "960" ? ["-variant", "fischerandom"] : []),
   ...(useBook ? ["-openings", `file=${book}`, "format=epd", `order=${bookOrder}`, "plies=16", "-repeat"] : []),
   "-games", "2", "-rounds", String(games / 2), "-concurrency", String(concurrency), "-srand", String(seed),
   "-draw", "movenumber=40", "movecount=8", "score=10",
@@ -213,6 +218,7 @@ const metadata = {
     eloDifference: /Elo difference: (\S+) \+\/- (\S+)/.exec(text)?.slice(1) ?? null,
   },
   seed,
+  variant,
   openingBook: useBook ? { path: book, sha256: await sha256(book) } : null,
   artifacts,
   git: { revision, dirty: status.exitCode !== 0 || status.stdout.toString().trim().length > 0 },
