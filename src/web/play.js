@@ -180,26 +180,39 @@ function tone(ctx, { at, freq, to = freq, length, volume, type = "sine" }) {
   osc.stop(at + length + 0.02);
 }
 
-/* kind: "move", "capture", "check", "win" or "end". */
-function playSound(kind) {
+/* A burst of the noise through a band-pass filter: wood striking wood. */
+function knock(ctx, { at, centre, q = 1.4, length, volume }) {
+  const source = ctx.createBufferSource();
+  source.buffer = noise;
+  const band = ctx.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = centre;
+  band.Q.value = q;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(volume, at);
+  gain.gain.exponentialRampToValueAtTime(0.0001, at + length);
+  source.connect(band).connect(gain).connect(ctx.destination);
+  source.start(at);
+}
+
+/* kind: "move", "capture", "check", "win" or "end"; a move that captures and checks is
+   "capture" with check true. A move is one soft knock. A capture is two hits: a bright clack,
+   the taking piece striking the taken one, then a deeper thud as it lands. */
+function playSound(kind, check = kind === "check") {
   if (!prefs.sound) return;
   const ctx = audioContext();
   if (!ctx || ctx.state !== "running") return;
   const t = ctx.currentTime + 0.005;
-  const capture = kind === "capture";
-  const knock = ctx.createBufferSource();
-  knock.buffer = noise;
-  const band = ctx.createBiquadFilter();
-  band.type = "bandpass";
-  band.frequency.value = capture ? 1100 : 1800;
-  band.Q.value = 1.4;
-  const gain = ctx.createGain();
-  gain.gain.setValueAtTime(capture ? 0.9 : 0.6, t);
-  gain.gain.exponentialRampToValueAtTime(0.0001, t + (capture ? 0.11 : 0.07));
-  knock.connect(band).connect(gain).connect(ctx.destination);
-  knock.start(t);
-  tone(ctx, { at: t, freq: capture ? 150 : 210, to: 70, length: capture ? 0.12 : 0.08, volume: capture ? 0.5 : 0.3 });
-  if (kind === "check") tone(ctx, { at: t + 0.06, freq: 880, length: 0.25, volume: 0.08, type: "triangle" });
+  if (kind === "capture") {
+    knock(ctx, { at: t, centre: 3200, q: 2.5, length: 0.04, volume: 2.2 });
+    tone(ctx, { at: t, freq: 1300, to: 950, length: 0.05, volume: 0.15, type: "triangle" });
+    knock(ctx, { at: t + 0.06, centre: 900, length: 0.11, volume: 0.9 });
+    tone(ctx, { at: t + 0.06, freq: 140, to: 60, length: 0.13, volume: 0.5 });
+  } else {
+    knock(ctx, { at: t, centre: 1800, length: 0.07, volume: 0.6 });
+    tone(ctx, { at: t, freq: 210, to: 70, length: 0.08, volume: 0.3 });
+  }
+  if (check) tone(ctx, { at: t + (kind === "capture" ? 0.12 : 0.06), freq: 880, length: 0.25, volume: 0.08, type: "triangle" });
   const chime = { win: [523, 659, 784, 1047], end: [440, 392] }[kind];
   chime?.forEach((freq, i) => tone(ctx, { at: t + 0.15 + i * 0.13, freq, length: 0.45, volume: 0.12, type: "triangle" }));
 }
@@ -576,7 +589,7 @@ function playMove(move) {
   save();
   if (outcome) endGame();
   else {
-    playSound(game.inCheck() ? "check" : result.captured ? "capture" : "move");
+    playSound(result.captured ? "capture" : game.inCheck() ? "check" : "move", game.inCheck());
     scheduleBot();
   }
   return true;
