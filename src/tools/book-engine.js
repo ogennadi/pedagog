@@ -4,6 +4,9 @@
 //   PEDAGOG_APP_BOOK      pedagog | aggressive | constrictor | hedgehog
 //   PEDAGOG_BOOK_ENGINE   the engine's source, relative to the repo root (default: engine.ts);
 //                         not to the working directory, which cutechess sets itself
+//   PEDAGOG_RANDOM_SEED   if "1", a random Skill_Seed for each game (at ucinewgame), as the app
+//                         draws one per game; otherwise the engine keeps its deterministic default,
+//                         and the book is the only source of variety between games
 // Example: PEDAGOG_APP_BOOK=hedgehog PEDAGOG_BOOK_ENGINE=src/variants/engine-hedgehog/engine-hedgehog.ts
 //          bun src/tools/match.js L10 sf1550 200 --book none --engine src/tools/book-engine.js
 import { existsSync } from "node:fs";
@@ -18,6 +21,8 @@ if (!Object.hasOwn(BOOKS, bookId ?? "")) throw new Error(`PEDAGOG_APP_BOOK must 
 const tree = BOOKS[bookId];
 const engine = resolve(root, process.env.PEDAGOG_BOOK_ENGINE ?? "engine.ts");
 if (!existsSync(engine)) throw new Error(`engine not found: ${engine}`);
+const randomSeed = process.env.PEDAGOG_RANDOM_SEED === "1";
+const MAX_SEED = 2147483647;
 
 const child = Bun.spawn([process.execPath, engine], { stdin: "pipe", stdout: "pipe", stderr: "inherit" });
 let quitting = false;
@@ -60,6 +65,7 @@ for await (const line of console) {
   if (words[0] === "quit") quitting = true;
   if (answer) process.stdout.write(`info string book\nbestmove ${answer}\n`);
   else send(line);
+  if (randomSeed && words[0] === "ucinewgame") send(`setoption name Skill_Seed value ${1 + Math.floor(Math.random() * MAX_SEED)}`);
   if (quitting) break;
 }
 quitting = true;

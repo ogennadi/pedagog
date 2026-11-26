@@ -214,7 +214,8 @@ const metadata = {
   players: [a, b],
   result: {
     firstPlayer: score[1], secondPlayer: score[2],
-    firstWins: Number(score[3]), draws: Number(score[4]), secondWins: Number(score[5]),
+    // cutechess reports "Score of A vs B: wins - losses - draws", from A's side.
+    firstWins: Number(score[3]), secondWins: Number(score[4]), draws: Number(score[5]),
     eloDifference: /Elo difference: (\S+) \+\/- (\S+)/.exec(text)?.slice(1) ?? null,
   },
   seed,
