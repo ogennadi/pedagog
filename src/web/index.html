@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="vendor/chessground/chessground.brown.css">
 <link rel="stylesheet" href="vendor/chessground/chessground.cburnett.css">
 <link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="animations.css">
+<link rel="stylesheet" href="play.css">
 <script type="importmap">
 { "imports": {
   "chessground": "./vendor/chessground/chessground.min.js",
@@ -22,107 +24,99 @@
 </script>
 </head>
 <body>
-<header>
-  <a class="home" href="./" title="Home">
-    <img class="logo" src="icon-192.png" alt="" width="24" height="24">
-    <h1>Pedagog</h1>
-  </a>
-  <span id="status" class="status">loading engine…</span>
-</header>
-<p id="storage-warning" class="status hidden" role="alert"></p>
+<main id="app" class="play setup-mode">
+  <header class="play-head">
+    <a class="home" href="./" title="Pedagog">
+      <img class="logo" src="icon-192.png" alt="" width="24" height="24">
+      <h1>Pedagog</h1>
+    </a>
+    <span id="status" class="status">loading…</span>
+    <a class="button icon-button" href="config.html" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M19.82 8.94L22.85 10.19L22.85 13.81L19.82 15.06L19.7 15.37L20.95 18.4L18.4 20.95L15.37 19.7L15.06 19.82L13.81 22.85L10.19 22.85L8.94 19.82L8.63 19.7L5.6 20.95L3.05 18.4L4.3 15.37L4.18 15.06L1.15 13.81L1.15 10.19L4.18 8.94L4.3 8.63L3.05 5.6L5.6 3.05L8.63 4.3L8.94 4.18L10.19 1.15L13.81 1.15L15.06 4.18L15.37 4.3L18.4 3.05L20.95 5.6L19.7 8.63ZM15.6 12a3.6 3.6 0 1 0 -7.2 0a3.6 3.6 0 1 0 7.2 0Z"/></svg>
+    </a>
+  </header>
 
-<main>
-  <section class="board-column">
-    <div class="player-bar" id="bar-top">
-      <span class="name" id="name-top">—</span>
-      <span class="captured cg-wrap" id="captured-top"></span>
-      <span class="clock" id="clock-top">0:00</span>
-    </div>
+  <div class="player-bar" id="bar-top"></div>
+  <div class="board-wrap">
     <div id="board" class="board"></div>
-    <div class="player-bar" id="bar-bottom">
-      <span class="name" id="name-bottom">—</span>
-      <span class="captured cg-wrap" id="captured-bottom"></span>
-      <span class="clock" id="clock-bottom">0:00</span>
-    </div>
+    <div class="preview-badge" id="preview-badge">Preview · press Play to start</div>
     <div id="promotion" class="promotion cg-wrap hidden">
       <button data-piece="q"><piece class="queen"></piece></button>
       <button data-piece="r"><piece class="rook"></piece></button>
       <button data-piece="b"><piece class="bishop"></piece></button>
       <button data-piece="n"><piece class="knight"></piece></button>
     </div>
-  </section>
+  </div>
+  <div class="player-bar" id="bar-bottom"></div>
 
-  <section class="side-column">
-    <form id="setup" class="setup" onsubmit="return false">
-      <div class="row">
-        <label>Mode
-          <select id="mode">
-            <option value="hvb">Human vs Bot</option>
-            <option value="bvb">Bot vs Bot</option>
-          </select>
-        </label>
-        <label id="colour-row">You play
-          <select id="colour">
-            <option value="white">White</option>
-            <option value="black">Black</option>
-            <option value="random">Random</option>
-          </select>
-        </label>
+  <section class="panel">
+    <p id="storage-warning" class="warning hidden" role="alert"></p>
+
+    <form id="setup" class="setup-panel" onsubmit="return false">
+      <div class="sides">
+        <div class="side-card" id="seat-top"></div>
+        <div class="segmented side-picker" id="side" role="radiogroup" aria-label="Side of the player below">
+          <button type="button" data-value="white"><span class="king-icon cg-wrap"><piece class="king white"></piece></span>White</button>
+          <button type="button" data-value="random"><span class="king-icon random cg-wrap"><piece class="king white"></piece><piece class="king black"></piece></span>Random</button>
+          <button type="button" data-value="black"><span class="king-icon cg-wrap"><piece class="king black"></piece></span>Black</button>
+        </div>
+        <div class="side-card" id="seat-bottom"></div>
       </div>
-      <div class="row">
-        <label id="level-row">Bot level <output id="level-out">10</output>
-          <input type="range" id="level" min="1" max="10" value="5">
-        </label>
-        <label id="level2-row" class="hidden">Black bot level <output id="level2-out">10</output>
-          <input type="range" id="level2" min="1" max="10" value="5">
-        </label>
+
+      <div class="variant-box">
+        <div class="segmented" id="variant" role="radiogroup" aria-label="Variant">
+          <button type="button" data-value="standard">Standard</button>
+          <button type="button" data-value="chess960">Chess960</button>
+        </div>
+        <div id="position-box" class="position-box">
+          <div class="position-row">
+            <button type="button" id="position-prev" title="Previous position" aria-label="Previous position">‹</button>
+            <input type="number" id="position" min="0" max="959" value="518" aria-label="Chess960 position number">
+            <button type="button" id="position-next" title="Next position" aria-label="Next position">›</button>
+            <button type="button" id="position-random">Random</button>
+          </div>
+          <input type="range" id="position-slider" min="0" max="959" value="518" aria-label="Chess960 position">
+          <div class="back-rank" id="back-rank"></div>
+        </div>
       </div>
-      <div class="row">
-        <label>Variant
-          <select id="variant">
-            <option value="standard">Standard</option>
-            <option value="chess960">Chess960</option>
-          </select>
-        </label>
-        <label id="position-row" class="hidden">Start position
-          <span class="inline">
-            <input type="number" id="position" min="0" max="959" value="518">
-            <button type="button" id="random-position">Random</button>
-          </span>
-        </label>
-      </div>
-      <div class="row buttons">
-        <button type="button" id="new-game" class="primary">New game</button>
-        <button type="button" id="pause" class="hidden">Pause</button>
-        <button type="button" id="flip">Flip board</button>
-        <a id="settings-link" class="button settings-link" href="config.html" title="Settings" aria-label="Settings">
-          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M19.82 8.94L22.85 10.19L22.85 13.81L19.82 15.06L19.7 15.37L20.95 18.4L18.4 20.95L15.37 19.7L15.06 19.82L13.81 22.85L10.19 22.85L8.94 19.82L8.63 19.7L5.6 20.95L3.05 18.4L4.3 15.37L4.18 15.06L1.15 13.81L1.15 10.19L4.18 8.94L4.3 8.63L3.05 5.6L5.6 3.05L8.63 4.3L8.94 4.18L10.19 1.15L13.81 1.15L15.06 4.18L15.37 4.3L18.4 3.05L20.95 5.6L19.7 8.63ZM15.6 12a3.6 3.6 0 1 0 -7.2 0a3.6 3.6 0 1 0 7.2 0Z"/></svg>
-        </a>
+
+      <div class="play-bar">
+        <button type="button" id="play" class="primary">▶ Play</button>
       </div>
     </form>
 
-    <div class="start-fen hidden" id="start-fen"></div>
-
-    <div class="moves-box">
-      <div id="opening" class="opening"></div>
-      <ol id="moves" class="moves"></ol>
-      <div id="result" class="result"></div>
-    </div>
-
-    <div class="row buttons">
-      <a id="lichess" class="button" target="_blank" rel="noopener">Open in Lichess</a>
-      <button type="button" id="copy-pgn">Copy PGN</button>
+    <div id="game-panel" class="game-panel hidden">
+      <div id="result-card" class="result-card hidden">
+        <div id="result-text" class="result-text"></div>
+        <div class="row buttons">
+          <button type="button" id="celebrate">🎉 Celebrate again</button>
+          <button type="button" id="play-again" class="primary">Play again</button>
+          <button type="button" id="new-setup">New setup</button>
+        </div>
+      </div>
+      <div class="moves-box">
+        <div id="opening" class="opening"></div>
+        <ol id="moves" class="moves"></ol>
+      </div>
+      <div class="nav">
+        <button type="button" id="nav-first" title="Start" aria-label="Start">⏮</button>
+        <button type="button" id="nav-prev" title="Back" aria-label="Back">◀</button>
+        <button type="button" id="nav-next" title="Forward" aria-label="Forward">▶</button>
+        <button type="button" id="nav-last" title="Live position" aria-label="Live position">⏭</button>
+      </div>
+      <div class="row buttons">
+        <button type="button" id="pause">Pause</button>
+        <button type="button" id="new-game">New game</button>
+        <button type="button" id="sound" title="Move sounds" aria-label="Move sounds"></button>
+      </div>
+      <div class="row buttons">
+        <button type="button" id="copy-pgn">Copy PGN</button>
+        <a id="lichess" class="button" target="_blank" rel="noopener">Open in Lichess</a>
+      </div>
+      <div class="start-fen hidden" id="start-fen"></div>
     </div>
 
     <p class="about">
-      Pedagog is a single-file pedagogical chess engine. Levels are
-      calibrated against the Maia bots and read as Lichess classical ratings: level 2 ≈ 945,
-      level 10 ≈ 1755 (Maia-1900); level 1 plays random moves. In standard chess the bots open
-      from a small weighted book, at most six plies deep and wide on purpose (about a seventh of
-      each side's first moves are rim or Grob-style flank thrusts), then the engine takes over. Each game draws its own
-      engine seed, recorded in the PGN as <code>SkillSeed</code>.
-      Click a move, or use the
-      ← → keys, to step through the game.
       Board by <a href="https://github.com/lichess-org/chessground">chessground</a> (GPL-3),
       rules by <a href="https://github.com/shaack/cm-chess">cm-chess</a> (MIT).
       Works offline once loaded. <a href="THIRD_PARTY_NOTICES.md">Third-party license notices</a>.
@@ -130,6 +124,29 @@
   </section>
 </main>
 
-<script type="module" src="app.js"></script>
+<template id="side-template">
+  <div class="side-head">
+    <span class="swatch"></span><span class="side-name"></span>
+    <div class="segmented type" role="radiogroup">
+      <button type="button" data-value="human">Human</button>
+      <button type="button" data-value="bot">Bot</button>
+    </div>
+  </div>
+  <div class="side-body">
+    <img class="avatar" alt="" width="48" height="48">
+    <div class="human-fields">
+      <span class="human-name"></span>
+    </div>
+    <div class="bot-fields">
+      <select class="engine" aria-label="Engine"></select>
+      <label class="level">Level <output></output>
+        <input type="range" min="1" max="10" value="5">
+      </label>
+    </div>
+  </div>
+  <p class="blurb"></p>
+</template>
+
+<script type="module" src="play.js"></script>
 </body>
 </html>

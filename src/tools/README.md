@@ -54,6 +54,20 @@ leave the opening to the players (`src/variants/engine-hedgehog/starts2.epd`).
 `--variant 960` plays Chess960 (cutechess `fischerandom`) from a `--book FILE` of
 Chess960 start positions.
 
+To measure a bot with its web-app opening book (`src/web/books.js`), point
+`--engine` at `book-engine.js`, a UCI proxy that answers from the book as the
+app does (from level 2, from the standard start) and passes everything else to
+the engine. It is configured by environment, since `--engine` takes one path:
+`PEDAGOG_APP_BOOK` (`pedagog`, `aggressive`, `constrictor` or `hedgehog`) and
+`PEDAGOG_BOOK_ENGINE` (the engine's source relative to the repo root, default
+`engine.ts`; cutechess sets its own working directory). Book moves have no
+eval comment in the PGN.
+
+```sh
+PEDAGOG_APP_BOOK=hedgehog PEDAGOG_BOOK_ENGINE=src/variants/engine-hedgehog/engine-hedgehog.ts \
+  bun run match L10 sf1550 200 --book none --engine src/tools/book-engine.js --tag hedgehog-book-vs-sf1550
+```
+
 Every match writes a PGN and a same-tag JSON metadata file under `src/tools/out/`.
 Metadata records the wrapper invocation and exact cutechess argument vector,
 result, seed, opening-book hash, engine/tool/runtime hashes, Git revision/dirty

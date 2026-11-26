@@ -62,11 +62,8 @@ header select { margin-left: auto; }
 }
 .fx canvas.on-top { position: absolute; inset: 0; z-index: 6; }
 
-/* Pawn chorus: clones in a line across the board, and the king conducting from the podium. The
-   spotlights' canvas sits in the `under` layer, over the veil but under the pieces. */
+/* A canvas in the `under` layer sits over the veil but under the pieces. */
 .fx:not(.over) canvas.on-top { z-index: 0; }
-.chorus-pawn { transform-origin: 50% 90%; }
-.chorus-king { transform-origin: 50% 90%; z-index: 4; filter: drop-shadow(0 0 1cqw hsl(48 100% 60% / .8)); }
 
 /* Tipped king: the mated king's stand-in, falling about its bottom corner (set in animations.js). */
 .tipped-king { z-index: 4; }

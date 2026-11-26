@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><title>Hedgehog</title><rect width="64" height="64" fill="#6b5233"/>
+<path fill="#3b2a17" d="M10 42 12 32 8 28l7-1-1-7 7 2 2-7 5 5 4-6 3 6 5-4 1 7 7-1-2 7 6 2-5 4 4 5-6 1z"/>
+<path fill="#e8c9a0" d="M38 44c0-8 6-14 14-12 4 1 6 5 6 8 0 3-3 5-8 5H40z"/>
+<circle cx="50" cy="37" r="1.8" fill="#1a120a"/><circle cx="58" cy="40" r="2" fill="#1a120a"/>
+<path fill="#3b2a17" d="M16 44h4v5h-4zm12 0h4v5h-4zm12 1h4v4h-4z"/></svg>

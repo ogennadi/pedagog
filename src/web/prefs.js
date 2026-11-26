@@ -1,9 +1,16 @@
-/* Display preferences shared by the app and the settings page (config.html): light or dark
-   page, which piece set and which board colours. Saved in local storage, apart from the saved game. Each choice is
-   applied by adding a <style> element, so the game code never needs to know about it. */
+/* Preferences shared by the game page and the settings page (config.html): light or dark page,
+   which piece set and which board colours, plus the player's name and picture and move sounds.
+   Saved in local storage, apart from the saved game. Each display choice is applied
+   by adding a <style> element, so the game code never needs to know about it. */
 
 export const PREFS_KEY = "pedagog-prefs-v1";
-export const DEFAULT_PREFS = Object.freeze({ theme: "dark", pieces: "cburnett", board: "brown" });
+export const DEFAULT_PREFS = Object.freeze({
+  theme: "dark", pieces: "cburnett", board: "brown",
+  name: "Me", avatar: "", sound: true,
+});
+export const MAX_NAME = 24;
+// The picture is stored as a small data URL (the settings page scales it to 96 px).
+const MAX_AVATAR = 200_000;
 
 // The piece sets: Lichess's (lichess-org/lila, public/piece) whose licence lets us redistribute
 // them, as recorded in lila's COPYING.md, leaving out those without a licence text (alpha, chess7,
@@ -48,10 +55,16 @@ const ROLES = { king: "K", queen: "Q", rook: "R", bishop: "B", knight: "N", pawn
 export function loadPrefs() {
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY)) ?? {};
+    const name = typeof saved.name === "string" ? saved.name.trim().slice(0, MAX_NAME) : "";
+    const avatar = saved.avatar;
     return {
       theme: THEMES.includes(saved.theme) ? saved.theme : DEFAULT_PREFS.theme,
       pieces: PIECE_SETS.some((s) => s.name === saved.pieces) ? saved.pieces : DEFAULT_PREFS.pieces,
       board: BOARD_THEMES.some((t) => t.name === saved.board) ? saved.board : DEFAULT_PREFS.board,
+      name: name || DEFAULT_PREFS.name,
+      avatar: typeof avatar === "string" && avatar.length <= MAX_AVATAR &&
+        /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(avatar) ? avatar : DEFAULT_PREFS.avatar,
+      sound: typeof saved.sound === "boolean" ? saved.sound : DEFAULT_PREFS.sound,
     };
   } catch {
     return { ...DEFAULT_PREFS };

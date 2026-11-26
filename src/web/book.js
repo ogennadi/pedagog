@@ -1,6 +1,6 @@
-/* The web app's opening book: shallow and wide, so the bots start games many different ways
+/* Pedagog's opening book: shallow and wide, so the bots start games many different ways
    and the engine's own style takes over early. Standard chess only. Levels 2 and up use it;
-   level 1 stays a random mover.
+   level 1 stays a random mover. The other bots' books are in books.js, in the same format.
 
    TREE is a weighted move tree in plain text, one move per line:
 
@@ -11,7 +11,21 @@
    child of the current position at random by weight; once the game leaves the tree, or reaches
    its last ply (at most MAX_PLIES), the engine plays. "//" starts a comment.
 
+   Two more forms, used by books.js:
+   - Weight 0: a move only the opponent plays. The bot never picks it, but its children are
+     the bot's answers when the opponent does.
+   - "0 *": any move by the opponent. Its children apply whatever the opponent played, as well
+     as those of a line naming the move.
+   - A system, "weight SAN SAN ...": the first move is picked like any other; the rest are the
+     bot's following moves, played whatever the opponent replies. A system has no children.
+     The book plays a system's next move only while it is safe: the opponent's last move was
+     not a capture or check, it is legal, it does not allow mate in one, and it leaves nothing
+     en prise (attacked by a cheaper piece, or attacked and undefended). A move ending in "!"
+     is a deliberate sacrifice, so it skips the last test.
+
    OPENINGS only names openings: the longest line the game has followed in full is shown. */
+import { Chess } from "./vendor/chess.mjs/src/Chess.js";
+
 export const MAX_PLIES = 6;
 
 export const TREE = `
@@ -705,31 +719,62 @@ export const OPENINGS = [
   { eco: "A00", name: "Polish Opening (Sokolsky)", moves: "b4 e5 Bb2 Bxb4 Bxe5 Nf6 c3 Be7" },
   { eco: "A00", name: "Van 't Kruijs Opening", moves: "e3 d5 d4 Nf6 Bd3 c5 c3" },
   { eco: "A00", name: "Dunst Opening", moves: "Nc3 d5 e4 d4 Nce2 e5 Ng3" },
+  // ---- Lines of the style bots' books (books.js)
+  { eco: "C29", name: "Vienna Game, Vienna Gambit", moves: "e4 e5 Nc3 Nf6 f4" },
+  { eco: "C25", name: "Vienna Game, Vienna Gambit", moves: "e4 e5 Nc3 Nc6 f4" },
+  { eco: "C47", name: "Halloween Gambit", moves: "e4 e5 Nf3 Nc6 Nc3 Nf6 Nxe5" },
+  { eco: "C42", name: "Boden-Kieseritzky Gambit", moves: "e4 e5 Nf3 Nf6 Bc4 Nxe4 Nc3" },
+  { eco: "C55", name: "Two Knights Defence, Modern Attack", moves: "e4 e5 Nf3 Nc6 Bc4 Nf6 d4" },
+  { eco: "C57", name: "Two Knights Defence, Traxler Counterattack", moves: "e4 e5 Nf3 Nc6 Bc4 Nf6 Ng5 Bc5" },
+  { eco: "C23", name: "Bishop's Opening, Calabrian Countergambit", moves: "e4 e5 Bc4 f5" },
+  { eco: "B01", name: "Scandinavian Defence, Icelandic-Palme Gambit", moves: "e4 d5 exd5 Nf6 c4 e6" },
+  { eco: "B01", name: "Scandinavian Defence, Portuguese Gambit", moves: "e4 d5 exd5 Nf6 d4 Bg4" },
+  { eco: "D00", name: "Blackmar-Diemer Gambit", moves: "e4 d5 d4 dxe4 Nc3" },
+  { eco: "C00", name: "French Defence, Diemer-Duhm Gambit", moves: "e4 e6 d4 d5 c4" },
+  { eco: "B15", name: "Caro-Kann Defence, Rasa-Studier Gambit", moves: "e4 c6 d4 d5 Nc3 dxe4 f3" },
+  { eco: "B15", name: "Caro-Kann Defence, Alien Gambit", moves: "e4 c6 d4 d5 Nc3 dxe4 Nxe4 Nf6 Ng5 h6 Nxf7" },
+  { eco: "A45", name: "Indian Defence, Omega Gambit", moves: "d4 Nf6 e4" },
+  { eco: "A45", name: "Indian Defence, Gibbins-Wiedenhofer Gambit", moves: "d4 Nf6 g4" },
+  { eco: "A57", name: "Benko Gambit", moves: "d4 Nf6 c4 c5 d5 b5" },
+  { eco: "A00", name: "Ware Opening, Viih_Sou Gambit", moves: "a4 e5 Ra3" },
+  { eco: "B00", name: "Ware Defence, Viih_Sou Gambit", moves: "e4 a5 d4 Ra6" },
+  { eco: "A00", name: "Polish Opening, Orangutan", moves: "b4 e5 Bb2" },
+  { eco: "B06", name: "Modern Defence, Norwegian Rat", moves: "e4 g6 d4 Nf6 e5 Nh5" },
+  { eco: "B09", name: "Pirc Defence, Austrian Attack", moves: "e4 d6 d4 Nf6 Nc3 g6 f4" },
+  { eco: "B03", name: "Alekhine's Defence, Four Pawns Attack", moves: "e4 Nf6 e5 Nd5 d4 d6 c4 Nb6 f4" },
+  { eco: "A56", name: "Benoni Defence, Czech", moves: "d4 Nf6 c4 c5 d5 e5" },
+  { eco: "E92", name: "King's Indian Defence, Petrosian", moves: "d4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 d5" },
 ];
 
 /* Comparison ignores check and mate marks. */
 export const plain = (san) => san.replace(/[+#]/g, "");
 
-/* Parses TREE text into nodes { san, weight, children }. Throws on a malformed line. */
-export function parseTree(text) {
+/* Parses book text into nodes { san, weight, then, children }; `then` lists a system's later
+   moves as { san, sacrifice }. Throws on a malformed line or one deeper than maxPlies. */
+export function parseTree(text, maxPlies = MAX_PLIES) {
   const items = text.split("\n").flatMap((raw, i) => {
     const line = raw.replace(/\/\/.*$/, "").trimEnd();
     if (!line.trim()) return [];
     const indent = line.length - line.trimStart().length;
-    const m = line.trim().match(/^(\d+)\s+(\S+)$/);
-    if (indent % 2 !== 0 || !m || Number(m[1]) <= 0) throw new SyntaxError(`book line ${i + 1}: ${raw}`);
+    const m = line.trim().match(/^(\d+)\s+(\S+(?:\s+\S+)*)$/);
+    if (indent % 2 !== 0 || !m) throw new SyntaxError(`book line ${i + 1}: ${raw}`);
+    const [san, ...rest] = m[2].split(/\s+/);
+    const weight = Number(m[1]);
+    if (san === "*" ? weight !== 0 || rest.length > 0 : san.endsWith("!")) throw new SyntaxError(`book line ${i + 1}: ${raw}`);
     const depth = indent / 2 + 1;
-    if (depth > MAX_PLIES) throw new RangeError(`book line ${i + 1} is deeper than ${MAX_PLIES} plies`);
-    return [{ depth, weight: Number(m[1]), san: m[2], line: i + 1 }];
+    if (depth > maxPlies) throw new RangeError(`book line ${i + 1} is deeper than ${maxPlies} plies`);
+    const then = rest.map((s) => ({ san: s.replace(/!$/, ""), sacrifice: s.endsWith("!") }));
+    return [{ depth, weight, san, then, line: i + 1 }];
   });
   const nest = (list, depth) => {
     if (list.length === 0) return [];
     if (list[0].depth !== depth) throw new SyntaxError(`book line ${list[0].line} is indented too far`);
     const starts = list.flatMap((it, i) => (it.depth === depth ? [i] : []));
-    return starts.map((s, k) => ({
-      san: list[s].san, weight: list[s].weight,
-      children: nest(list.slice(s + 1, starts[k + 1] ?? list.length), depth + 1),
-    }));
+    return starts.map((s, k) => {
+      const children = nest(list.slice(s + 1, starts[k + 1] ?? list.length), depth + 1);
+      if (list[s].then.length > 0 && children.length > 0) throw new SyntaxError(`book line ${list[s].line}: a system has no children`);
+      return { san: list[s].san, weight: list[s].weight, then: list[s].then, children };
+    });
   };
   return nest(items, 1);
 }
@@ -750,4 +795,52 @@ export function pickWeighted(nodes, r) {
 /* Every root-to-leaf path of the tree as a SAN list. */
 export function treePaths(tree) {
   return tree.flatMap((n) => (n.children.length ? treePaths(n.children).map((p) => [n.san, ...p]) : [[n.san]]));
+}
+
+const VALUE = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 100 };
+
+/* Whether a system may play `move` in the position `fen` (see the header). */
+function safeSystemMove(fen, move, sacrifice) {
+  const after = new Chess(fen);
+  after.move(move.san);
+  const replies = after.moves({ verbose: true });
+  const mated = replies.some((r) => r.san.endsWith("#"));
+  const loses = replies.some((r) => r.captured && (VALUE[r.piece] < VALUE[r.captured] || !after.isAttacked(r.to, move.color)));
+  return !mated && (sacrifice || !loses);
+}
+
+/* The book's candidate moves for the side to move after `played` (SAN list from the standard
+   start): [{ san, weight }] with each san as the rules write it, or [] out of book. */
+export function bookCandidates(tree, played) {
+  const chess = new Chess();
+  if (!played.every((san) => chess.move(san))) return [];
+  const legal = chess.moves({ verbose: true });
+  const find = (san) => legal.find((m) => plain(m.san) === plain(san));
+  const { level, systems } = played.reduce(({ level: nodes, systems: active }, san, ply) => {
+    const matched = nodes.filter((n) => n.san === "*" || plain(n.san) === plain(san));
+    return {
+      level: matched.flatMap((n) => n.children),
+      systems: [...active, ...matched.filter((n) => n.then.length > 0).map((node) => ({ node, start: ply }))],
+    };
+  }, { level: tree, systems: [] });
+  const fromTree = level
+    .filter((n) => n.san !== "*" && n.weight > 0 && find(n.san))
+    .map((n) => ({ san: find(n.san).san, weight: n.weight }));
+  const quiet = played.length === 0 || !/[x+#]/.test(played[played.length - 1]);
+  const fromSystems = !quiet ? [] : systems.flatMap(({ node, start }) => {
+    const plies = played.length - start;
+    const next = plies / 2 - 1;
+    if (plies <= 0 || plies % 2 !== 0 || next >= node.then.length || node.weight === 0) return [];
+    const followed = node.then.slice(0, next).every((step, k) => plain(step.san) === plain(played[start + 2 * (k + 1)]));
+    const step = node.then[next];
+    const move = followed ? find(step.san) : undefined;
+    return move && safeSystemMove(chess.fen(), move, step.sacrifice) ? [{ san: move.san, weight: node.weight }] : [];
+  });
+  return [...fromTree, ...fromSystems];
+}
+
+/* A book move for the side to move after `played`, or null out of book; r is in [0, 1). */
+export function bookMove(tree, played, r) {
+  const candidates = bookCandidates(tree, played);
+  return candidates.length ? pickWeighted(candidates, r).san : null;
 }

@@ -16,9 +16,6 @@
     --control: #fafaf8; --control-hover: #efede7;
   }
 }
-/* The gear at the end of the setup buttons: a square icon button. */
-.settings-link { margin-left: auto; width: 2.5rem; padding: 0; color: var(--muted); }
-.settings-link:hover { color: var(--text); }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent); }
@@ -36,7 +33,6 @@ main { display: grid; grid-template-columns: 1fr; gap: .75rem; padding: 0 .5rem 
   main { grid-template-columns: var(--board) minmax(18rem, 1fr); align-items: start; }
 }
 
-.board-column { position: relative; width: var(--board); margin: 0 auto; }
 .board { width: var(--board); height: var(--board); touch-action: none; }   /* dragging must not scroll the page */
 /* Coordinates inside the edge squares, sized with the board, as on Lichess. chessground.base.css
    only has demo styles with fixed pixel offsets, which drift off the squares as the board's size
@@ -76,7 +72,6 @@ main { display: grid; grid-template-columns: 1fr; gap: .75rem; padding: 0 .5rem 
 .promotion.cg-wrap piece { position: static; display: block; width: 100%; height: 100%; background-size: contain; background-repeat: no-repeat; background-position: center; pointer-events: none; }
 .hidden { display: none !important; }
 
-.side-column { display: flex; flex-direction: column; gap: .75rem; }
 .setup { background: var(--panel); border-radius: .5rem; padding: .6rem .75rem; display: flex; flex-direction: column; gap: .5rem; }
 .row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
 .row label { display: flex; flex-direction: column; gap: .2rem; font-size: .85rem; color: var(--muted); flex: 1 1 10rem; }

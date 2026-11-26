@@ -1,11 +1,12 @@
 // Tiny static server for the web app:  bun src/tools/serve.js [port] [--engine PATH]   (or: bun run web)
-// Serves src/web/ as the site root, plus the licence files (LICENSE, docs/THIRD_PARTY_NOTICES.md)
-// and engine.js (engine.ts, or the --engine source, without its types, made afresh for each
-// request), which is the same layout `bun run build` puts in dist/. Sends the cross-origin
-// isolation headers so SharedArrayBuffer is available and "stop" can interrupt a running search.
+// Serves src/web/ as the site root, plus the licence files (LICENSE, docs/THIRD_PARTY_NOTICES.md),
+// engine.js (engine.ts, or the --engine source, without its types, made afresh for each request)
+// and the style variants as engines/<name>.js, which is the same layout `bun run build` puts in
+// dist/. Sends the cross-origin isolation headers so SharedArrayBuffer is available and "stop" can
+// interrupt a running search.
 import { resolve, dirname, extname, normalize } from "node:path";
 import { existsSync, statSync } from "node:fs";
-import { engineJs, engineTs } from "./engine-js.js";
+import { engineJs, engineTs, ENGINE_SOURCES } from "./engine-js.js";
 
 const root = resolve(dirname(Bun.main), "..", "..");
 const web = resolve(root, "src", "web");
@@ -32,6 +33,8 @@ Bun.serve({
       "Cache-Control": "no-cache",
     });
     if (path === "/engine.js") return new Response(engineJs(engine), { headers: headers(path) });
+    if (Object.hasOwn(ENGINE_SOURCES, path.slice(1)))
+      return new Response(engineJs(ENGINE_SOURCES[path.slice(1)]), { headers: headers(path) });
     if (Object.hasOwn(LICENCE_FILES, path)) {
       const licence = resolve(root, LICENCE_FILES[path]);
       return new Response(Bun.file(licence), { headers: headers(licence) });

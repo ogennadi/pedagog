@@ -26,7 +26,19 @@
 
 <main class="config">
   <form class="setup" onsubmit="return false">
-    <div class="row">
+    <div class="player-row">
+      <img id="avatar-preview" class="avatar" alt="" width="56" height="56">
+      <label>Your name
+        <input type="text" id="player-name" maxlength="24" placeholder="Me" autocomplete="nickname">
+      </label>
+      <div class="picture-buttons">
+        <label class="button file-button">Choose picture
+          <input type="file" id="avatar-file" accept="image/*">
+        </label>
+        <button type="button" id="avatar-remove">Remove</button>
+      </div>
+    </div>
+    <div class="settings-grid">
       <label>Appearance
         <select id="theme">
           <option value="dark">Dark</option>
@@ -40,12 +52,12 @@
       <label>Piece set
         <output id="current-pieces">—</output>
       </label>
+      <label class="check"><input type="checkbox" id="sound"> Move sounds</label>
+      <a class="button primary" id="back" href="./">← Back to the game</a>
+      <button type="button" id="reset">Reset look to default</button>
     </div>
-    <div class="row buttons">
-      <a class="button primary" href="./">← Back to the game</a>
-      <button type="button" id="reset">Reset to default</button>
-    </div>
-    <p class="about">Click a board to use its piece set. Choices are saved in this browser.
+    <p class="about">Your name and picture show beside the board on the new game page. Click a board
+      below to use its piece set. Choices are saved in this browser.
       The piece sets are Lichess's and others', each with its own licence (see
       <a href="vendor/pieces/LICENSES.md">the list</a>); those marked
       <span class="nc">non-commercial</span> may not be used commercially.</p>

@@ -1,9 +1,13 @@
 /* Service worker: the whole app is cached on first visit so it keeps working offline.
    Requests go to the network first (so updates arrive when online) and fall back to the cache. */
-const CACHE = "pedagog-v6";
+const CACHE = "pedagog-v9";
 const FILES = [
-  "./", "index.html", "engine.js", "app.js", "prefs.js", "book.js", "app.css", "manifest.json",
+  "./", "index.html", "engine.js", "play.js", "prefs.js", "book.js", "books.js", "chess960.js", "manifest.json",
+  "app.css", "play.css", "animations.css", "win-animations.js",
   "config.html", "config.js", "config.css",
+  "engines/aggressive.js", "engines/constrictor.js", "engines/hedgehog.js", "engines/habits.js",
+  "avatars/pedagog.svg", "avatars/aggressive.svg", "avatars/constrictor.svg", "avatars/hedgehog.svg",
+  "avatars/habits.svg", "avatars/human.svg",
   "icon-32.png", "icon-180.png", "icon-192.png", "icon-512.png",
   "vendor/chessground/chessground.min.js",
   "vendor/chessground/chessground.base.css",
