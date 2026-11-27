@@ -7,7 +7,7 @@ import { Chess, GAME_VARIANT } from "cm-chess/src/Chess.js";
 import { OPENINGS, bookMove, plain } from "./book.js";
 import { BOOKS } from "./books.js";
 import {
-  BOARD_THEMES, PREFS_KEY, loadPrefs, savePrefs, pieceCss, boardCss, applyCss, applyTheme,
+  BOARD_THEMES, PREFS_KEY, loadPrefs, savePrefs, pieceCss, boardCss, applyCss, applyTheme, rankStripHtml,
 } from "./prefs.js";
 import { chess960Fen, chess960Rank, START_FEN, STANDARD_POSITION } from "./chess960.js";
 import { playWin } from "./win-animations.js";
@@ -177,6 +177,7 @@ const colourToMove = () => (game.turn() === "w" ? "white" : "black");
 const sans = () => game.history().map((m) => m.san);
 const isBot = (colour) => match.players[colour].type === "bot";
 const humans = (players) => COLOURS.filter((c) => players[c].type === "human");
+const botsOnly = (players) => humans(players).length === 0;
 const finished = () => match !== null && match.outcome !== null;
 const inProgress = () => match !== null && match.outcome === null;
 
@@ -499,7 +500,8 @@ function load() {
       match: {
         variant: saved.variant, position: saved.position, startFen: saved.startFen,
         players: saved.players, elapsed: saved.elapsed, paused: saved.paused, viewPly: saved.viewPly,
-        date: saved.date, seed: saved.seed, outcome, humanWon, orientation: saved.orientation,
+        date: saved.date, seed: saved.seed, outcome, humanWon,
+        orientation: botsOnly(saved.players) ? "white" : saved.orientation,
       },
     };
   } catch (e) {
@@ -600,7 +602,8 @@ function onUserMove(from, to) {
 }
 
 /* Start a game from `fromSetup`: the bottom player takes its side (a coin toss for random) and
-   keeps the near side of the board; then the position. */
+   keeps the near side of the board, except that two bots always have White at the bottom; then
+   the position. */
 function startGame(fromSetup) {
   stopCelebration();
   stopEngines();
@@ -615,7 +618,7 @@ function startGame(fromSetup) {
   match = {
     variant: fromSetup.variant, position, startFen, players, elapsed: { white: 0, black: 0 },
     paused: false, viewPly: null, date: today(), seed: newSeed(), outcome: null, humanWon: false,
-    orientation: near,
+    orientation: botsOnly(players) ? "white" : near,
   };
   tickFrom = performance.now();
   $("promotion").classList.add("hidden");
@@ -705,9 +708,12 @@ const setupOrientation = (s) => (s.side === "black" ? "black" : "white");
 // The colour `seat` plays: "random" until the game starts.
 const seatColour = (s, seat) => (s.side === "random" ? "random" : seat === "bottom" ? s.side : other(s.side));
 
-/* A lone human sits at the bottom, so the board faces them; each player keeps its colour. */
-function humanAtBottom(s) {
-  if (s.top.type !== "human" || s.bottom.type === "human") return s;
+/* Who sits where; each player keeps its colour. A lone human sits at the bottom, so the board faces
+   them; of two bots, White does. */
+function seated(s) {
+  const loneHumanOnTop = s.top.type === "human" && s.bottom.type !== "human";
+  const blackBotBelow = s.top.type === "bot" && s.bottom.type === "bot" && s.side === "black";
+  if (!loneHumanOnTop && !blackBotBelow) return s;
   return { ...s, top: s.bottom, bottom: s.top, side: s.side === "random" ? "random" : other(s.side) };
 }
 
@@ -727,7 +733,7 @@ const changeSeat = (seat, change) => changeSetup({ [seat]: { ...setup[seat], ...
 
 function changeSetup(change) {
   const changed = { ...setup, ...change };
-  setup = humanAtBottom(changed);
+  setup = seated(changed);
   const focused = document.activeElement;
   refreshSetup();
   refreshBoard();
@@ -768,6 +774,8 @@ function refreshSetup() {
   $("position-slider").value = setup.position;
   const rank = chess960Rank(setup.position);
   $("back-rank").textContent = `Position ${setup.position}: ${rank}${setup.position === STANDARD_POSITION ? " (the standard one)" : ""}`;
+  // On a phone held upright, the near player's back rank stands in for the board (play.css).
+  $("setup-preview").innerHTML = rankStripHtml(chess960 ? rank : chess960Rank(STANDARD_POSITION), setupOrientation(setup));
 }
 
 const setPosition = (n) => changeSetup({ position: ((n % 960) + 960) % 960 });
@@ -861,7 +869,7 @@ document.addEventListener("keydown", (e) => {
 applyPrefs();
 const restored = load();
 if (restored) {
-  setup = restored.setup;
+  setup = seated(restored.setup);
   if (restored.match) {
     game = restored.game;
     match = restored.match;

@@ -88,6 +88,16 @@ export function pieceCss(set, scope, base) {
   return rules.join("\n");
 }
 
+/* The squares of `rank`, White's back rank as letters (e.g. "RNBQKBNR"), with `colour`'s pieces on
+   them as that player sees them at the near edge of the board (Black's mirrored), so the left
+   square is dark. The HTML goes inside a `.rank-strip.cg-wrap` (app.css). */
+export function rankStripHtml(rank, colour) {
+  const letters = colour === "white" ? [...rank] : [...rank].reverse();
+  return letters.map((letter, i) =>
+    `<div class="sq ${i % 2 ? "light" : "dark"}"><piece class="${ROLE_OF[letter]} ${colour}"></piece></div>`).join("");
+}
+const ROLE_OF = Object.fromEntries(Object.entries(ROLES).map(([role, letter]) => [letter, role]));
+
 /* CSS that colours the squares of every board inside `scope` with `theme`: a checkerboard drawn
    by a conic gradient, two squares to a tile, so a1 (bottom left) is dark. */
 export function boardCss(theme, scope) {
