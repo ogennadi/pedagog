@@ -388,7 +388,7 @@ function refreshPanel() {
   $("bar-bottom").classList.toggle("hidden", setupMode);
   $("sound").textContent = prefs.sound ? "🔊" : "🔇";
   $("sound").title = prefs.sound ? "Move sounds on" : "Move sounds off";
-  if (setupMode) { refreshSetup(); return; }
+  if (setupMode) { refreshSetup(); refreshStatus(); return; }
   const bvb = humans(match.players).length === 0;
   $("pause").classList.toggle("hidden", !bvb || !inProgress());
   $("pause").textContent = match.paused ? "▶ Resume" : "⏸ Pause";
@@ -411,6 +411,13 @@ function refreshStatus() {
 }
 
 function setStatus(text) { $("status").textContent = text; }
+
+/* An engine's error in full, in a box that wraps, as the status line is kept to one line; ""
+   takes it away. */
+function showEngineError(text) {
+  $("engine-warning").textContent = text;
+  $("engine-warning").classList.toggle("hidden", text === "");
+}
 
 function refreshAll() { refreshBoard(); refreshBars(); refreshMoves(); refreshPanel(); }
 
@@ -567,6 +574,7 @@ async function scheduleBot() {
   const colour = colourToMove();
   if (!isBot(colour)) { refreshStatus(); return; }
   thinking = true;
+  showEngineError("");
   const id = gameId;
   const { book, move } = botMove(colour);
   const indicator = book ? null : setTimeout(() => setThinking(colour, true), THINKING_DELAY_MS);
@@ -576,12 +584,19 @@ async function scheduleBot() {
   if (id !== gameId) return;                 // a new game was started meanwhile
   thinking = false;
   setThinking(colour, false);
+  const name = playerInfo(colour, match.players).name;
   if (answer instanceof Error) {
-    if (!(answer instanceof Cancelled)) setStatus(`Engine error: ${answer.message}`);
+    if (!(answer instanceof Cancelled)) {
+      setStatus("Engine error");
+      showEngineError(`${name} could not move: ${answer.message}`);
+    }
     return;
   }
   if (match.paused) { refreshStatus(); return; }
-  if (!playMove(answer)) setStatus(`Engine move rejected: ${JSON.stringify(answer)}`);
+  if (!playMove(answer)) {
+    setStatus("Engine error");
+    showEngineError(`${name} chose a move the rules reject: ${JSON.stringify(answer)}`);
+  }
 }
 
 /* A human move from the board. Promotions ask which piece. */
@@ -622,6 +637,7 @@ function startGame(fromSetup) {
   };
   tickFrom = performance.now();
   $("promotion").classList.add("hidden");
+  showEngineError("");
   audioContext();
   refreshAll();
   save();
@@ -636,6 +652,7 @@ function toSetup() {
   match = null;
   game = new Chess({ fen: START_FEN });
   $("promotion").classList.add("hidden");
+  showEngineError("");
   setThinkingOff();
   refreshAll();
   save();

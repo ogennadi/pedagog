@@ -1979,7 +1979,10 @@ const inWorker = isBun ? !Bun.isMainThread
      the worker finishes its queue, then exits.
    - The worker, which runs uciCommand(). Until the main thread's
      shared stop flag arrives, it uses one of its own that is never
-     set.
+     set, so not shared either: a page that is not cross-origin
+     isolated (plain http other than localhost) has no
+     SharedArrayBuffer, and the web app stops a search by ending
+     the worker instead.
    - Anything else (a browser page): drive it by hand through
      globalThis.Pedagog. */
 if (isBun && Bun.isMainThread) {
@@ -2014,7 +2017,7 @@ if (isBun && Bun.isMainThread) {
   })();
 } else if (inWorker) {
   let session = newSession();
-  let stopFlag: Int32Array = new Int32Array(new SharedArrayBuffer(4));
+  let stopFlag: Int32Array = new Int32Array(1);
   const io: Io = {
     out: (line) => self.postMessage(line),
     now,
