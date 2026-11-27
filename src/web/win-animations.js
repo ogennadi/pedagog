@@ -1319,7 +1319,7 @@ export const ANIMATIONS = {
 
 // The game page (index.html, play.js) plays one of these when a human wins: the beaten bot's own,
 // or one of play.js's WIN_ANIMATIONS at random after beating a human; the others (on fire, K.O.,
-// fireworks, sunburst) are earlier, shorter experiments.
+// sunburst) are earlier, shorter experiments.
 
 /* When a handle ends, in ms from the start (Infinity for one that never does). */
 function endTime(handle) {

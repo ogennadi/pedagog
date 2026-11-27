@@ -52,7 +52,7 @@ const ENGINES = {
     blurb: "Curls up behind a Hippo shell of pawns, then breaks out.",
   },
   habits: {
-    name: "Habits", url: "engines/habits.js", book: null, win: "explode",
+    name: "Habits", url: "engines/habits.js", book: null, win: "fireworks",
     blurb: "Plays like GM Aman Hambleton's Building Habits speedrun: a small repertoire and fixed habits. Tuned at level 10.",
   },
 };
