@@ -1,9 +1,9 @@
 /* Service worker: the whole app is cached on first visit so it keeps working offline.
    Requests go to the network first (so updates arrive when online) and fall back to the cache. */
-const CACHE = "pedagog-v9";
+const CACHE = "pedagog-v10";
 const FILES = [
   "./", "index.html", "engine.js", "play.js", "prefs.js", "book.js", "books.js", "chess960.js", "manifest.json",
-  "app.css", "play.css", "animations.css", "win-animations.js",
+  "app.css", "play.css", "animations.css", "win-animations.js", "game-sounds.js",
   "config.html", "config.js", "config.css",
   "engines/aggressive.js", "engines/constrictor.js", "engines/hedgehog.js", "engines/habits.js",
   "avatars/pedagog.svg", "avatars/aggressive.svg", "avatars/constrictor.svg", "avatars/hedgehog.svg",
